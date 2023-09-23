@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Godot;
 using GodotTools.Internals;
 using static GodotTools.Internals.Globals;
@@ -14,6 +15,7 @@ namespace GodotTools.Build
         private Button _errorsBtn;
         private Button _warningsBtn;
         private Button _viewLogBtn;
+        private Button _openLogsFolderBtn;
 
         private void WarningsToggled(bool pressed)
         {
@@ -27,84 +29,68 @@ namespace GodotTools.Build
             BuildOutputView.UpdateIssuesList();
         }
 
-        public void BuildSolution()
+        public void BuildProject()
         {
-            if (!File.Exists(GodotSharpDirs.ProjectSlnPath))
-                return; // No solution to build
-
-            try
-            {
-                // Make sure our packages are added to the fallback folder
-                NuGetUtils.AddBundledPackagesToFallbackFolder(NuGetUtils.GodotFallbackFolderPath);
-            }
-            catch (Exception e)
-            {
-                GD.PushError("Failed to setup Godot NuGet Offline Packages: " + e.Message);
-            }
+            if (!File.Exists(GodotSharpDirs.ProjectCsProjPath))
+                return; // No project to build.
 
             if (!BuildManager.BuildProjectBlocking("Debug"))
-                return; // Build failed
+                return; // Build failed.
 
-            // Notify running game for hot-reload
+            // Notify running game for hot-reload.
             Internal.EditorDebuggerNodeReloadScripts();
 
-            // Hot-reload in the editor
+            // Hot-reload in the editor.
             GodotSharpEditor.Instance.GetNode<HotReloadAssemblyWatcher>("HotReloadAssemblyWatcher").RestartTimer();
 
             if (Internal.IsAssembliesReloadingNeeded())
                 Internal.ReloadAssemblies(softReload: false);
         }
 
-        private void RebuildSolution()
+        private void RebuildProject()
         {
-            if (!File.Exists(GodotSharpDirs.ProjectSlnPath))
-                return; // No solution to build
-
-            try
-            {
-                // Make sure our packages are added to the fallback folder
-                NuGetUtils.AddBundledPackagesToFallbackFolder(NuGetUtils.GodotFallbackFolderPath);
-            }
-            catch (Exception e)
-            {
-                GD.PushError("Failed to setup Godot NuGet Offline Packages: " + e.Message);
-            }
+            if (!File.Exists(GodotSharpDirs.ProjectCsProjPath))
+                return; // No project to build.
 
             if (!BuildManager.BuildProjectBlocking("Debug", rebuild: true))
-                return; // Build failed
+                return; // Build failed.
 
-            // Notify running game for hot-reload
+            // Notify running game for hot-reload.
             Internal.EditorDebuggerNodeReloadScripts();
 
-            // Hot-reload in the editor
+            // Hot-reload in the editor.
             GodotSharpEditor.Instance.GetNode<HotReloadAssemblyWatcher>("HotReloadAssemblyWatcher").RestartTimer();
 
             if (Internal.IsAssembliesReloadingNeeded())
                 Internal.ReloadAssemblies(softReload: false);
         }
 
-        private void CleanSolution()
+        private void CleanProject()
         {
-            if (!File.Exists(GodotSharpDirs.ProjectSlnPath))
-                return; // No solution to build
+            if (!File.Exists(GodotSharpDirs.ProjectCsProjPath))
+                return; // No project to build.
 
             _ = BuildManager.CleanProjectBlocking("Debug");
         }
 
         private void ViewLogToggled(bool pressed) => BuildOutputView.LogVisible = pressed;
 
+        private void OpenLogsFolderPressed() => OS.ShellOpen(
+            $"file://{GodotSharpDirs.LogsDirPathFor("Debug")}"
+        );
+
         private void BuildMenuOptionPressed(long id)
         {
             switch ((BuildMenuOptions)id)
             {
-                case BuildMenuOptions.BuildSolution:
-                    BuildSolution();
+                case BuildMenuOptions.BuildProject:
+                    BuildProject();
                     break;
-                case BuildMenuOptions.RebuildSolution:
-                    RebuildSolution();
+                case BuildMenuOptions.RebuildProject:
+                    RebuildProject();
                     break;
-                case BuildMenuOptions.CleanSolution:
-                    CleanSolution();
+                case BuildMenuOptions.CleanProject:
+                    CleanProject();
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(id), id, "Invalid build menu option");
@@ -113,28 +99,28 @@ namespace GodotTools.Build
 
         private enum BuildMenuOptions
         {
-            BuildSolution,
-            RebuildSolution,
-            CleanSolution
+            BuildProject,
+            RebuildProject,
+            CleanProject
         }
 
         public override void _Ready()
         {
             base._Ready();
 
-            CustomMinimumSize = new Vector2i(0, (int)(228 * EditorScale));
-            SizeFlagsVertical = (int)SizeFlags.ExpandFill;
+            CustomMinimumSize = new Vector2(0, 228 * EditorScale);
+            SizeFlagsVertical = SizeFlags.ExpandFill;
 
-            var toolBarHBox = new HBoxContainer { SizeFlagsHorizontal = (int)SizeFlags.ExpandFill };
+            var toolBarHBox = new HBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
             AddChild(toolBarHBox);
 
-            _buildMenuBtn = new MenuButton { Text = "Build", Icon = GetThemeIcon("Play", "EditorIcons") };
+            _buildMenuBtn = new MenuButton { Text = "Build", Icon = GetThemeIcon("BuildCSharp", "EditorIcons") };
             toolBarHBox.AddChild(_buildMenuBtn);
 
             var buildMenu = _buildMenuBtn.GetPopup();
-            buildMenu.AddItem("Build Solution".TTR(), (int)BuildMenuOptions.BuildSolution);
-            buildMenu.AddItem("Rebuild Solution".TTR(), (int)BuildMenuOptions.RebuildSolution);
-            buildMenu.AddItem("Clean Solution".TTR(), (int)BuildMenuOptions.CleanSolution);
+            buildMenu.AddItem("Build Project".TTR(), (int)BuildMenuOptions.BuildProject);
+            buildMenu.AddItem("Rebuild Project".TTR(), (int)BuildMenuOptions.RebuildProject);
+            buildMenu.AddItem("Clean Project".TTR(), (int)BuildMenuOptions.CleanProject);
             buildMenu.IdPressed += BuildMenuOptionPressed;
 
             _errorsBtn = new Button
@@ -171,18 +157,34 @@ namespace GodotTools.Build
             _viewLogBtn.Toggled += ViewLogToggled;
             toolBarHBox.AddChild(_viewLogBtn);
 
+            // Horizontal spacer, push everything to the right.
+            toolBarHBox.AddChild(new Control
+            {
+                SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            });
+
+            _openLogsFolderBtn = new Button
+            {
+                Text = "Show Logs in File Manager".TTR(),
+                Icon = GetThemeIcon("Filesystem", "EditorIcons"),
+                ExpandIcon = false,
+                FocusMode = FocusModeEnum.None,
+            };
+            _openLogsFolderBtn.Pressed += OpenLogsFolderPressed;
+            toolBarHBox.AddChild(_openLogsFolderBtn);
+
             BuildOutputView = new BuildOutputView();
             AddChild(BuildOutputView);
         }
 
-        public override void _Notification(long what)
+        public override void _Notification(int what)
         {
             base._Notification(what);
 
             if (what == NotificationThemeChanged)
             {
                 if (_buildMenuBtn != null)
-                    _buildMenuBtn.Icon = GetThemeIcon("Play", "EditorIcons");
+                    _buildMenuBtn.Icon = GetThemeIcon("BuildCSharp", "EditorIcons");
                 if (_errorsBtn != null)
                     _errorsBtn.Icon = GetThemeIcon("StatusError", "EditorIcons");
                 if (_warningsBtn != null)

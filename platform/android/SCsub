@@ -21,7 +21,7 @@ android_files = [
     "android_keys_utils.cpp",
     "display_server_android.cpp",
     "plugin/godot_plugin_jni.cpp",
-    "vulkan/vulkan_context_android.cpp",
+    "vulkan_context_android.cpp",
 ]
 
 env_android = env.Clone()
@@ -53,14 +53,17 @@ else:
     print("WARN: Architecture not suitable for embedding into APK; keeping .so at \\bin")
 
 if lib_arch_dir != "":
-    if env["target"] == "release":
-        lib_type_dir = "release"
-    elif env["target"] == "release_debug":
-        lib_type_dir = "debug"
-    else:  # debug
+    if env.dev_build:
         lib_type_dir = "dev"
+    elif env.debug_features:
+        if env.editor_build and env["store_release"]:
+            lib_type_dir = "release"
+        else:
+            lib_type_dir = "debug"
+    else:  # Release
+        lib_type_dir = "release"
 
-    if env["tools"]:
+    if env.editor_build:
         lib_tools_dir = "tools/"
     else:
         lib_tools_dir = ""

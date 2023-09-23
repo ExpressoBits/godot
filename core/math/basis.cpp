@@ -1,57 +1,40 @@
-/*************************************************************************/
-/*  basis.cpp                                                            */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  basis.cpp                                                             */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "basis.h"
 
 #include "core/math/math_funcs.h"
-#include "core/string/print_string.h"
+#include "core/string/ustring.h"
 
 #define cofac(row1, col1, row2, col2) \
 	(rows[row1][col1] * rows[row2][col2] - rows[row1][col2] * rows[row2][col1])
-
-void Basis::from_z(const Vector3 &p_z) {
-	if (Math::abs(p_z.z) > (real_t)Math_SQRT12) {
-		// choose p in y-z plane
-		real_t a = p_z[1] * p_z[1] + p_z[2] * p_z[2];
-		real_t k = 1.0f / Math::sqrt(a);
-		rows[0] = Vector3(0, -p_z[2] * k, p_z[1] * k);
-		rows[1] = Vector3(a * k, -p_z[0] * rows[0][2], p_z[0] * rows[0][1]);
-	} else {
-		// choose p in x-y plane
-		real_t a = p_z.x * p_z.x + p_z.y * p_z.y;
-		real_t k = 1.0f / Math::sqrt(a);
-		rows[0] = Vector3(-p_z.y * k, p_z.x * k, 0);
-		rows[1] = Vector3(-p_z.z * rows[0].y, p_z.z * rows[0].x, a * k);
-	}
-	rows[2] = p_z;
-}
 
 void Basis::invert() {
 	real_t co[3] = {
@@ -142,8 +125,8 @@ bool Basis::is_symmetric() const {
 #endif
 
 Basis Basis::diagonalize() {
-//NOTE: only implemented for symmetric matrices
-//with the Jacobi iterative method
+// NOTE: only implemented for symmetric matrices
+// with the Jacobi iterative method
 #ifdef MATH_CHECKS
 	ERR_FAIL_COND_V(!is_symmetric(), Basis());
 #endif
@@ -256,12 +239,17 @@ void Basis::scale_orthogonal(const Vector3 &p_scale) {
 Basis Basis::scaled_orthogonal(const Vector3 &p_scale) const {
 	Basis m = *this;
 	Vector3 s = Vector3(-1, -1, -1) + p_scale;
+	bool sign = signbit(s.x + s.y + s.z);
+	Basis b = m.orthonormalized();
+	s = b.xform_inv(s);
 	Vector3 dots;
-	Basis b;
 	for (int i = 0; i < 3; i++) {
 		for (int j = 0; j < 3; j++) {
 			dots[j] += s[i] * abs(m.get_column(i).normalized().dot(b.get_column(j)));
 		}
+	}
+	if (sign != signbit(dots.x + dots.y + dots.z)) {
+		dots = -dots;
 	}
 	m.scale_local(Vector3(1, 1, 1) + dots);
 	return m;
@@ -269,14 +257,6 @@ Basis Basis::scaled_orthogonal(const Vector3 &p_scale) const {
 
 float Basis::get_uniform_scale() const {
 	return (rows[0].length() + rows[1].length() + rows[2].length()) / 3.0f;
-}
-
-void Basis::make_scale_uniform() {
-	float l = (rows[0].length() + rows[1].length() + rows[2].length()) / 3.0f;
-	for (int i = 0; i < 3; i++) {
-		rows[i].normalize();
-		rows[i] *= l;
-	}
 }
 
 Basis Basis::scaled_local(const Vector3 &p_scale) const {
@@ -417,7 +397,7 @@ void Basis::rotate_to_align(Vector3 p_start_direction, Vector3 p_end_direction) 
 		real_t dot = p_start_direction.dot(p_end_direction);
 		dot = CLAMP(dot, -1.0f, 1.0f);
 		const real_t angle_rads = Math::acos(dot);
-		set_axis_angle(axis, angle_rads);
+		*this = Basis(axis, angle_rads) * (*this);
 	}
 }
 
@@ -453,7 +433,7 @@ void Basis::get_rotation_axis_angle_local(Vector3 &p_axis, real_t &p_angle) cons
 
 Vector3 Basis::get_euler(EulerOrder p_order) const {
 	switch (p_order) {
-		case EULER_ORDER_XYZ: {
+		case EulerOrder::XYZ: {
 			// Euler angles in XYZ convention.
 			// See https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
 			//
@@ -487,8 +467,8 @@ Vector3 Basis::get_euler(EulerOrder p_order) const {
 				euler.z = 0.0f;
 			}
 			return euler;
-		} break;
-		case EULER_ORDER_XZY: {
+		}
+		case EulerOrder::XZY: {
 			// Euler angles in XZY convention.
 			// See https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
 			//
@@ -516,8 +496,8 @@ Vector3 Basis::get_euler(EulerOrder p_order) const {
 				euler.z = -Math_PI / 2.0f;
 			}
 			return euler;
-		} break;
-		case EULER_ORDER_YXZ: {
+		}
+		case EulerOrder::YXZ: {
 			// Euler angles in YXZ convention.
 			// See https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
 			//
@@ -554,8 +534,8 @@ Vector3 Basis::get_euler(EulerOrder p_order) const {
 			}
 
 			return euler;
-		} break;
-		case EULER_ORDER_YZX: {
+		}
+		case EulerOrder::YZX: {
 			// Euler angles in YZX convention.
 			// See https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
 			//
@@ -584,7 +564,7 @@ Vector3 Basis::get_euler(EulerOrder p_order) const {
 			}
 			return euler;
 		} break;
-		case EULER_ORDER_ZXY: {
+		case EulerOrder::ZXY: {
 			// Euler angles in ZXY convention.
 			// See https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
 			//
@@ -612,7 +592,7 @@ Vector3 Basis::get_euler(EulerOrder p_order) const {
 			}
 			return euler;
 		} break;
-		case EULER_ORDER_ZYX: {
+		case EulerOrder::ZYX: {
 			// Euler angles in ZYX convention.
 			// See https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
 			//
@@ -639,7 +619,7 @@ Vector3 Basis::get_euler(EulerOrder p_order) const {
 				euler.z = -Math::atan2(rows[0][1], rows[1][1]);
 			}
 			return euler;
-		} break;
+		}
 		default: {
 			ERR_FAIL_V_MSG(Vector3(), "Invalid parameter for get_euler(order)");
 		}
@@ -663,22 +643,22 @@ void Basis::set_euler(const Vector3 &p_euler, EulerOrder p_order) {
 	Basis zmat(c, -s, 0, s, c, 0, 0, 0, 1);
 
 	switch (p_order) {
-		case EULER_ORDER_XYZ: {
+		case EulerOrder::XYZ: {
 			*this = xmat * (ymat * zmat);
 		} break;
-		case EULER_ORDER_XZY: {
+		case EulerOrder::XZY: {
 			*this = xmat * zmat * ymat;
 		} break;
-		case EULER_ORDER_YXZ: {
+		case EulerOrder::YXZ: {
 			*this = ymat * xmat * zmat;
 		} break;
-		case EULER_ORDER_YZX: {
+		case EulerOrder::YZX: {
 			*this = ymat * zmat * xmat;
 		} break;
-		case EULER_ORDER_ZXY: {
+		case EulerOrder::ZXY: {
 			*this = zmat * xmat * ymat;
 		} break;
-		case EULER_ORDER_ZYX: {
+		case EulerOrder::ZYX: {
 			*this = zmat * ymat * xmat;
 		} break;
 		default: {
@@ -689,6 +669,10 @@ void Basis::set_euler(const Vector3 &p_euler, EulerOrder p_order) {
 
 bool Basis::is_equal_approx(const Basis &p_basis) const {
 	return rows[0].is_equal_approx(p_basis.rows[0]) && rows[1].is_equal_approx(p_basis.rows[1]) && rows[2].is_equal_approx(p_basis.rows[2]);
+}
+
+bool Basis::is_finite() const {
+	return rows[0].is_finite() && rows[1].is_finite() && rows[2].is_finite();
 }
 
 bool Basis::operator==(const Basis &p_matrix) const {
@@ -811,7 +795,7 @@ void Basis::get_axis_angle(Vector3 &r_axis, real_t &r_angle) const {
 		return;
 	}
 	// As we have reached here there are no singularities so we can handle normally.
-	double s = Math::sqrt((rows[2][1] - rows[1][2]) * (rows[2][1] - rows[1][2]) + (rows[0][2] - rows[2][0]) * (rows[0][2] - rows[2][0]) + (rows[1][0] - rows[0][1]) * (rows[1][0] - rows[0][1])); // Used to normalise.
+	double s = Math::sqrt((rows[2][1] - rows[1][2]) * (rows[2][1] - rows[1][2]) + (rows[0][2] - rows[2][0]) * (rows[0][2] - rows[2][0]) + (rows[1][0] - rows[0][1]) * (rows[1][0] - rows[0][1])); // Used to normalize.
 
 	if (Math::abs(s) < CMP_EPSILON) {
 		// Prevent divide by zero, should not happen if matrix is orthogonal and should be caught by singularity test above.
@@ -823,8 +807,8 @@ void Basis::get_axis_angle(Vector3 &r_axis, real_t &r_angle) const {
 	z = (rows[1][0] - rows[0][1]) / s;
 
 	r_axis = Vector3(x, y, z);
-	// CLAMP to avoid NaN if the value passed to acos is not in [0,1].
-	r_angle = Math::acos(CLAMP((rows[0][0] + rows[1][1] + rows[2][2] - 1) / 2, (real_t)0.0, (real_t)1.0));
+	// acos does clamping.
+	r_angle = Math::acos((rows[0][0] + rows[1][1] + rows[2][2] - 1) / 2);
 }
 
 void Basis::set_quaternion(const Quaternion &p_quaternion) {
@@ -1032,12 +1016,15 @@ void Basis::rotate_sh(real_t *p_values) {
 	p_values[8] = d4 * s_scale_dst4;
 }
 
-Basis Basis::looking_at(const Vector3 &p_target, const Vector3 &p_up) {
+Basis Basis::looking_at(const Vector3 &p_target, const Vector3 &p_up, bool p_use_model_front) {
 #ifdef MATH_CHECKS
 	ERR_FAIL_COND_V_MSG(p_target.is_zero_approx(), Basis(), "The target vector can't be zero.");
 	ERR_FAIL_COND_V_MSG(p_up.is_zero_approx(), Basis(), "The up vector can't be zero.");
 #endif
-	Vector3 v_z = -p_target.normalized();
+	Vector3 v_z = p_target.normalized();
+	if (!p_use_model_front) {
+		v_z = -v_z;
+	}
 	Vector3 v_x = p_up.cross(v_z);
 #ifdef MATH_CHECKS
 	ERR_FAIL_COND_V_MSG(v_x.is_zero_approx(), Basis(), "The target vector and up vector can't be parallel to each other.");

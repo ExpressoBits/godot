@@ -7,7 +7,7 @@ using Microsoft.CodeAnalysis.Text;
 
 // TODO:
 //   Determine a proper way to emit the signal.
-//   'Emit(nameof(TheEvent))' creates a StringName everytime and has the overhead of string marshaling.
+//   'Emit(nameof(TheEvent))' creates a StringName every time and has the overhead of string marshaling.
 //   I haven't decided on the best option yet. Some possibilities:
 //     - Expose the generated StringName fields to the user, for use with 'Emit(...)'.
 //     - Generate a 'EmitSignalName' method for each event signal.
@@ -23,7 +23,7 @@ namespace Godot.SourceGenerators
 
         public void Execute(GeneratorExecutionContext context)
         {
-            if (context.AreGodotSourceGeneratorsDisabled())
+            if (context.IsGodotSourceGeneratorDisabled("ScriptSignals"))
                 return;
 
             INamedTypeSymbol[] godotClasses = context
@@ -75,14 +75,14 @@ namespace Godot.SourceGenerators
         {
             INamespaceSymbol namespaceSymbol = symbol.ContainingNamespace;
             string classNs = namespaceSymbol != null && !namespaceSymbol.IsGlobalNamespace ?
-                namespaceSymbol.FullQualifiedName() :
+                namespaceSymbol.FullQualifiedNameOmitGlobal() :
                 string.Empty;
             bool hasNamespace = classNs.Length != 0;
 
             bool isInnerClass = symbol.ContainingType != null;
 
-            string uniqueHint = symbol.FullQualifiedName().SanitizeQualifiedNameForUniqueHint()
-                                + "_ScriptSignals_Generated";
+            string uniqueHint = symbol.FullQualifiedNameOmitGlobal().SanitizeQualifiedNameForUniqueHint()
+                                + "_ScriptSignals.generated";
 
             var source = new StringBuilder();
 
@@ -167,6 +167,7 @@ namespace Godot.SourceGenerators
                             Common.ReportSignalDelegateSignatureMustReturnVoid(context, signalDelegateSymbol);
                         }
                     }
+
                     continue;
                 }
 
@@ -175,14 +176,26 @@ namespace Godot.SourceGenerators
 
             source.Append("#pragma warning disable CS0109 // Disable warning about redundant 'new' keyword\n");
 
-            source.Append($"    public new class SignalName : {symbol.BaseType.FullQualifiedName()}.SignalName {{\n");
+            source.Append("    /// <summary>\n")
+                .Append("    /// Cached StringNames for the signals contained in this class, for fast lookup.\n")
+                .Append("    /// </summary>\n");
+
+            source.Append(
+                $"    public new class SignalName : {symbol.BaseType.FullQualifiedNameIncludeGlobal()}.SignalName {{\n");
 
             // Generate cached StringNames for methods and properties, for fast lookup
 
             foreach (var signalDelegate in godotSignalDelegates)
             {
                 string signalName = signalDelegate.Name;
-                source.Append("        public new static readonly StringName ");
+
+                source.Append("        /// <summary>\n")
+                    .Append("        /// Cached name for the '")
+                    .Append(signalName)
+                    .Append("' signal.\n")
+                    .Append("        /// </summary>\n");
+
+                source.Append("        public new static readonly global::Godot.StringName ");
                 source.Append(signalName);
                 source.Append(" = \"");
                 source.Append(signalName);
@@ -195,7 +208,15 @@ namespace Godot.SourceGenerators
 
             if (godotSignalDelegates.Count > 0)
             {
-                const string listType = "System.Collections.Generic.List<global::Godot.Bridge.MethodInfo>";
+                const string listType = "global::System.Collections.Generic.List<global::Godot.Bridge.MethodInfo>";
+
+                source.Append("    /// <summary>\n")
+                    .Append("    /// Get the signal information for all the signals declared in this class.\n")
+                    .Append("    /// This method is used by Godot to register the available signals in the editor.\n")
+                    .Append("    /// Do not call this method.\n")
+                    .Append("    /// </summary>\n");
+
+                source.Append("    [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]\n");
 
                 source.Append("    internal new static ")
                     .Append(listType)
@@ -230,13 +251,16 @@ namespace Godot.SourceGenerators
                 // as it doesn't emit the signal, only the event delegates. This can confuse users.
                 // Maybe we should directly connect the delegates, as we do with native signals?
                 source.Append("    private ")
-                    .Append(signalDelegate.DelegateSymbol.FullQualifiedName())
+                    .Append(signalDelegate.DelegateSymbol.FullQualifiedNameIncludeGlobal())
                     .Append(" backing_")
                     .Append(signalName)
                     .Append(";\n");
 
+                source.Append(
+                    $"    /// <inheritdoc cref=\"{signalDelegate.DelegateSymbol.FullQualifiedNameIncludeGlobal()}\"/>\n");
+
                 source.Append("    public event ")
-                    .Append(signalDelegate.DelegateSymbol.FullQualifiedName())
+                    .Append(signalDelegate.DelegateSymbol.FullQualifiedNameIncludeGlobal())
                     .Append(" ")
                     .Append(signalName)
                     .Append(" {\n")
@@ -253,16 +277,39 @@ namespace Godot.SourceGenerators
 
             if (godotSignalDelegates.Count > 0)
             {
+                source.Append("    /// <inheritdoc/>\n");
+                source.Append("    [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]\n");
                 source.Append(
                     "    protected override void RaiseGodotClassSignalCallbacks(in godot_string_name signal, ");
-                source.Append("NativeVariantPtrArgs args, int argCount)\n    {\n");
+                source.Append("NativeVariantPtrArgs args)\n    {\n");
 
                 foreach (var signal in godotSignalDelegates)
                 {
                     GenerateSignalEventInvoker(signal, source);
                 }
 
-                source.Append("        base.RaiseGodotClassSignalCallbacks(signal, args, argCount);\n");
+                source.Append("        base.RaiseGodotClassSignalCallbacks(signal, args);\n");
+
+                source.Append("    }\n");
+            }
+
+            // Generate HasGodotClassSignal
+
+            if (godotSignalDelegates.Count > 0)
+            {
+                source.Append("    /// <inheritdoc/>\n");
+                source.Append("    [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]\n");
+                source.Append(
+                    "    protected override bool HasGodotClassSignal(in godot_string_name signal)\n    {\n");
+
+                bool isFirstEntry = true;
+                foreach (var signal in godotSignalDelegates)
+                {
+                    GenerateHasSignalEntry(signal.Name, source, isFirstEntry);
+                    isFirstEntry = false;
+                }
+
+                source.Append("        return base.HasGodotClassSignal(signal);\n");
 
                 source.Append("    }\n");
             }
@@ -297,7 +344,7 @@ namespace Godot.SourceGenerators
 
             AppendPropertyInfo(source, methodInfo.ReturnVal);
 
-            source.Append(", flags: (Godot.MethodFlags)")
+            source.Append(", flags: (global::Godot.MethodFlags)")
                 .Append((int)methodInfo.Flags)
                 .Append(", arguments: ");
 
@@ -325,19 +372,25 @@ namespace Godot.SourceGenerators
 
         private static void AppendPropertyInfo(StringBuilder source, PropertyInfo propertyInfo)
         {
-            source.Append("new(type: (Godot.Variant.Type)")
+            source.Append("new(type: (global::Godot.Variant.Type)")
                 .Append((int)propertyInfo.Type)
                 .Append(", name: \"")
                 .Append(propertyInfo.Name)
-                .Append("\", hint: (Godot.PropertyHint)")
+                .Append("\", hint: (global::Godot.PropertyHint)")
                 .Append((int)propertyInfo.Hint)
                 .Append(", hintString: \"")
                 .Append(propertyInfo.HintString)
-                .Append("\", usage: (Godot.PropertyUsageFlags)")
+                .Append("\", usage: (global::Godot.PropertyUsageFlags)")
                 .Append((int)propertyInfo.Usage)
                 .Append(", exported: ")
-                .Append(propertyInfo.Exported ? "true" : "false")
-                .Append(")");
+                .Append(propertyInfo.Exported ? "true" : "false");
+            if (propertyInfo.ClassName != null)
+            {
+                source.Append(", className: new global::Godot.StringName(\"")
+                    .Append(propertyInfo.ClassName)
+                    .Append("\")");
+            }
+            source.Append(")");
         }
 
         private static MethodInfo DetermineMethodInfo(GodotSignalDelegateData signalDelegateData)
@@ -348,7 +401,9 @@ namespace Godot.SourceGenerators
 
             if (invokeMethodData.RetType != null)
             {
-                returnVal = DeterminePropertyInfo(invokeMethodData.RetType.Value, name: string.Empty);
+                returnVal = DeterminePropertyInfo(invokeMethodData.RetType.Value.MarshalType,
+                    invokeMethodData.RetType.Value.TypeSymbol,
+                    name: string.Empty);
             }
             else
             {
@@ -367,6 +422,7 @@ namespace Godot.SourceGenerators
                 for (int i = 0; i < paramCount; i++)
                 {
                     arguments.Add(DeterminePropertyInfo(invokeMethodData.ParamTypes[i],
+                        invokeMethodData.Method.Parameters[i].Type,
                         name: invokeMethodData.Method.Parameters[i].Name));
                 }
             }
@@ -379,7 +435,7 @@ namespace Godot.SourceGenerators
                 defaultArguments: null);
         }
 
-        private static PropertyInfo DeterminePropertyInfo(MarshalType marshalType, string name)
+        private static PropertyInfo DeterminePropertyInfo(MarshalType marshalType, ITypeSymbol typeSymbol, string name)
         {
             var memberVariantType = MarshalUtils.ConvertMarshalTypeToVariantType(marshalType)!.Value;
 
@@ -388,8 +444,28 @@ namespace Godot.SourceGenerators
             if (memberVariantType == VariantType.Nil)
                 propUsage |= PropertyUsageFlags.NilIsVariant;
 
+            string? className = null;
+            if (memberVariantType == VariantType.Object && typeSymbol is INamedTypeSymbol namedTypeSymbol)
+            {
+                className = namedTypeSymbol.GetGodotScriptNativeClassName();
+            }
+
             return new PropertyInfo(memberVariantType, name,
-                PropertyHint.None, string.Empty, propUsage, exported: false);
+                PropertyHint.None, string.Empty, propUsage, className, exported: false);
+        }
+
+        private static void GenerateHasSignalEntry(
+            string signalName,
+            StringBuilder source,
+            bool isFirstEntry
+        )
+        {
+            source.Append("        ");
+            if (!isFirstEntry)
+                source.Append("else ");
+            source.Append("if (signal == SignalName.");
+            source.Append(signalName);
+            source.Append(") {\n           return true;\n        }\n");
         }
 
         private static void GenerateSignalEventInvoker(
@@ -402,7 +478,7 @@ namespace Godot.SourceGenerators
 
             source.Append("        if (signal == SignalName.");
             source.Append(signalName);
-            source.Append(" && argCount == ");
+            source.Append(" && args.Count == ");
             source.Append(invokeMethodData.ParamTypes.Length);
             source.Append(") {\n");
             source.Append("            backing_");

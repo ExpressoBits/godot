@@ -1,32 +1,32 @@
-/*************************************************************************/
-/*  light_storage.cpp                                                    */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  light_storage.cpp                                                     */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #ifdef GLES3_ENABLED
 
@@ -76,6 +76,7 @@ void LightStorage::_light_initialize(RID p_light, RS::LightType p_type) {
 	light.param[RS::LIGHT_PARAM_SHADOW_BLUR] = 0;
 	light.param[RS::LIGHT_PARAM_SHADOW_PANCAKE_SIZE] = 20.0;
 	light.param[RS::LIGHT_PARAM_TRANSMITTANCE_BIAS] = 0.05;
+	light.param[RS::LIGHT_PARAM_INTENSITY] = p_type == RS::LIGHT_DIRECTIONAL ? 100000.0 : 1000.0;
 
 	light_owner.initialize_rid(p_light, light);
 }
@@ -115,14 +116,14 @@ void LightStorage::light_free(RID p_rid) {
 
 void LightStorage::light_set_color(RID p_light, const Color &p_color) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 
 	light->color = p_color;
 }
 
 void LightStorage::light_set_param(RID p_light, RS::LightParam p_param, float p_value) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 	ERR_FAIL_INDEX(p_param, RS::LIGHT_PARAM_MAX);
 
 	if (light->param[p_param] == p_value) {
@@ -157,7 +158,7 @@ void LightStorage::light_set_param(RID p_light, RS::LightParam p_param, float p_
 
 void LightStorage::light_set_shadow(RID p_light, bool p_enabled) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 	light->shadow = p_enabled;
 
 	light->version++;
@@ -167,7 +168,7 @@ void LightStorage::light_set_shadow(RID p_light, bool p_enabled) {
 void LightStorage::light_set_projector(RID p_light, RID p_texture) {
 	GLES3::TextureStorage *texture_storage = GLES3::TextureStorage::get_singleton();
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 
 	if (light->projector == p_texture) {
 		return;
@@ -189,14 +190,14 @@ void LightStorage::light_set_projector(RID p_light, RID p_texture) {
 
 void LightStorage::light_set_negative(RID p_light, bool p_enable) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 
 	light->negative = p_enable;
 }
 
 void LightStorage::light_set_cull_mask(RID p_light, uint32_t p_mask) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 
 	light->cull_mask = p_mask;
 
@@ -206,7 +207,7 @@ void LightStorage::light_set_cull_mask(RID p_light, uint32_t p_mask) {
 
 void LightStorage::light_set_distance_fade(RID p_light, bool p_enabled, float p_begin, float p_shadow, float p_length) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 
 	light->distance_fade = p_enabled;
 	light->distance_fade_begin = p_begin;
@@ -216,7 +217,7 @@ void LightStorage::light_set_distance_fade(RID p_light, bool p_enabled, float p_
 
 void LightStorage::light_set_reverse_cull_face_mode(RID p_light, bool p_enabled) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 
 	light->reverse_cull = p_enabled;
 
@@ -226,7 +227,7 @@ void LightStorage::light_set_reverse_cull_face_mode(RID p_light, bool p_enabled)
 
 void LightStorage::light_set_bake_mode(RID p_light, RS::LightBakeMode p_bake_mode) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 
 	light->bake_mode = p_bake_mode;
 
@@ -236,7 +237,7 @@ void LightStorage::light_set_bake_mode(RID p_light, RS::LightBakeMode p_bake_mod
 
 void LightStorage::light_omni_set_shadow_mode(RID p_light, RS::LightOmniShadowMode p_mode) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 
 	light->omni_shadow_mode = p_mode;
 
@@ -246,14 +247,14 @@ void LightStorage::light_omni_set_shadow_mode(RID p_light, RS::LightOmniShadowMo
 
 RS::LightOmniShadowMode LightStorage::light_omni_get_shadow_mode(RID p_light) {
 	const Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND_V(!light, RS::LIGHT_OMNI_SHADOW_CUBE);
+	ERR_FAIL_NULL_V(light, RS::LIGHT_OMNI_SHADOW_CUBE);
 
 	return light->omni_shadow_mode;
 }
 
 void LightStorage::light_directional_set_shadow_mode(RID p_light, RS::LightDirectionalShadowMode p_mode) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 
 	light->directional_shadow_mode = p_mode;
 	light->version++;
@@ -262,7 +263,7 @@ void LightStorage::light_directional_set_shadow_mode(RID p_light, RS::LightDirec
 
 void LightStorage::light_directional_set_blend_splits(RID p_light, bool p_enable) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 
 	light->directional_blend_splits = p_enable;
 	light->version++;
@@ -271,49 +272,56 @@ void LightStorage::light_directional_set_blend_splits(RID p_light, bool p_enable
 
 bool LightStorage::light_directional_get_blend_splits(RID p_light) const {
 	const Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND_V(!light, false);
+	ERR_FAIL_NULL_V(light, false);
 
 	return light->directional_blend_splits;
 }
 
 void LightStorage::light_directional_set_sky_mode(RID p_light, RS::LightDirectionalSkyMode p_mode) {
 	Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND(!light);
+	ERR_FAIL_NULL(light);
 
 	light->directional_sky_mode = p_mode;
 }
 
 RS::LightDirectionalSkyMode LightStorage::light_directional_get_sky_mode(RID p_light) const {
 	const Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND_V(!light, RS::LIGHT_DIRECTIONAL_SKY_MODE_LIGHT_AND_SKY);
+	ERR_FAIL_NULL_V(light, RS::LIGHT_DIRECTIONAL_SKY_MODE_LIGHT_AND_SKY);
 
 	return light->directional_sky_mode;
 }
 
 RS::LightDirectionalShadowMode LightStorage::light_directional_get_shadow_mode(RID p_light) {
 	const Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND_V(!light, RS::LIGHT_DIRECTIONAL_SHADOW_ORTHOGONAL);
+	ERR_FAIL_NULL_V(light, RS::LIGHT_DIRECTIONAL_SHADOW_ORTHOGONAL);
 
 	return light->directional_shadow_mode;
 }
 
 RS::LightBakeMode LightStorage::light_get_bake_mode(RID p_light) {
 	const Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND_V(!light, RS::LIGHT_BAKE_DISABLED);
+	ERR_FAIL_NULL_V(light, RS::LIGHT_BAKE_DISABLED);
 
 	return light->bake_mode;
 }
 
 uint64_t LightStorage::light_get_version(RID p_light) const {
 	const Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND_V(!light, 0);
+	ERR_FAIL_NULL_V(light, 0);
 
 	return light->version;
 }
 
+uint32_t LightStorage::light_get_cull_mask(RID p_light) const {
+	const Light *light = light_owner.get_or_null(p_light);
+	ERR_FAIL_NULL_V(light, 0);
+
+	return light->cull_mask;
+}
+
 AABB LightStorage::light_get_aabb(RID p_light) const {
 	const Light *light = light_owner.get_or_null(p_light);
-	ERR_FAIL_COND_V(!light, AABB());
+	ERR_FAIL_NULL_V(light, AABB());
 
 	switch (light->type) {
 		case RS::LIGHT_SPOT: {
@@ -331,6 +339,46 @@ AABB LightStorage::light_get_aabb(RID p_light) const {
 	}
 
 	ERR_FAIL_V(AABB());
+}
+
+/* LIGHT INSTANCE API */
+
+RID LightStorage::light_instance_create(RID p_light) {
+	RID li = light_instance_owner.make_rid(LightInstance());
+
+	LightInstance *light_instance = light_instance_owner.get_or_null(li);
+
+	light_instance->self = li;
+	light_instance->light = p_light;
+	light_instance->light_type = light_get_type(p_light);
+
+	return li;
+}
+
+void LightStorage::light_instance_free(RID p_light_instance) {
+	LightInstance *light_instance = light_instance_owner.get_or_null(p_light_instance);
+	ERR_FAIL_NULL(light_instance);
+	light_instance_owner.free(p_light_instance);
+}
+
+void LightStorage::light_instance_set_transform(RID p_light_instance, const Transform3D &p_transform) {
+	LightInstance *light_instance = light_instance_owner.get_or_null(p_light_instance);
+	ERR_FAIL_NULL(light_instance);
+
+	light_instance->transform = p_transform;
+}
+
+void LightStorage::light_instance_set_aabb(RID p_light_instance, const AABB &p_aabb) {
+	LightInstance *light_instance = light_instance_owner.get_or_null(p_light_instance);
+	ERR_FAIL_NULL(light_instance);
+
+	light_instance->aabb = p_aabb;
+}
+
+void LightStorage::light_instance_set_shadow_transform(RID p_light_instance, const Projection &p_projection, const Transform3D &p_transform, float p_far, float p_split, int p_pass, float p_shadow_texel_size, float p_bias_scale, float p_range_begin, const Vector2 &p_uv_scale) {
+}
+
+void LightStorage::light_instance_mark_visible(RID p_light_instance) {
 }
 
 /* PROBE API */
@@ -363,7 +411,7 @@ void LightStorage::reflection_probe_set_ambient_energy(RID p_probe, float p_ener
 void LightStorage::reflection_probe_set_max_distance(RID p_probe, float p_distance) {
 }
 
-void LightStorage::reflection_probe_set_extents(RID p_probe, const Vector3 &p_extents) {
+void LightStorage::reflection_probe_set_size(RID p_probe, const Vector3 &p_size) {
 }
 
 void LightStorage::reflection_probe_set_origin_offset(RID p_probe, const Vector3 &p_offset) {
@@ -396,7 +444,7 @@ uint32_t LightStorage::reflection_probe_get_cull_mask(RID p_probe) const {
 	return 0;
 }
 
-Vector3 LightStorage::reflection_probe_get_extents(RID p_probe) const {
+Vector3 LightStorage::reflection_probe_get_size(RID p_probe) const {
 	return Vector3();
 }
 
@@ -417,6 +465,57 @@ void LightStorage::reflection_probe_set_mesh_lod_threshold(RID p_probe, float p_
 
 float LightStorage::reflection_probe_get_mesh_lod_threshold(RID p_probe) const {
 	return 0.0;
+}
+
+/* REFLECTION ATLAS */
+
+RID LightStorage::reflection_atlas_create() {
+	return RID();
+}
+
+void LightStorage::reflection_atlas_free(RID p_ref_atlas) {
+}
+
+int LightStorage::reflection_atlas_get_size(RID p_ref_atlas) const {
+	return 0;
+}
+
+void LightStorage::reflection_atlas_set_size(RID p_ref_atlas, int p_reflection_size, int p_reflection_count) {
+}
+
+/* REFLECTION PROBE INSTANCE */
+
+RID LightStorage::reflection_probe_instance_create(RID p_probe) {
+	return RID();
+}
+
+void LightStorage::reflection_probe_instance_free(RID p_instance) {
+}
+
+void LightStorage::reflection_probe_instance_set_transform(RID p_instance, const Transform3D &p_transform) {
+}
+
+void LightStorage::reflection_probe_release_atlas_index(RID p_instance) {
+}
+
+bool LightStorage::reflection_probe_instance_needs_redraw(RID p_instance) {
+	return false;
+}
+
+bool LightStorage::reflection_probe_instance_has_reflection(RID p_instance) {
+	return false;
+}
+
+bool LightStorage::reflection_probe_instance_begin_render(RID p_instance, RID p_reflection_atlas) {
+	return false;
+}
+
+Ref<RenderSceneBuffers> LightStorage::reflection_probe_atlas_get_render_buffers(RID p_reflection_atlas) {
+	return Ref<RenderSceneBuffers>();
+}
+
+bool LightStorage::reflection_probe_instance_postprocess_step(RID p_instance) {
+	return true;
 }
 
 /* LIGHTMAP CAPTURE */
@@ -484,104 +583,48 @@ float LightStorage::lightmap_get_probe_capture_update_speed() const {
 	return 0;
 }
 
-/* LIGHT SHADOW MAPPING */
-/*
+/* LIGHTMAP INSTANCE */
 
-RID LightStorage::canvas_light_occluder_create() {
-	CanvasOccluder *co = memnew(CanvasOccluder);
-	co->index_id = 0;
-	co->vertex_id = 0;
-	co->len = 0;
-
-	return canvas_occluder_owner.make_rid(co);
+RID LightStorage::lightmap_instance_create(RID p_lightmap) {
+	return RID();
 }
 
-void LightStorage::canvas_light_occluder_set_polylines(RID p_occluder, const PoolVector<Vector2> &p_lines) {
-	CanvasOccluder *co = canvas_occluder_owner.get(p_occluder);
-	ERR_FAIL_COND(!co);
-
-	co->lines = p_lines;
-
-	if (p_lines.size() != co->len) {
-		if (co->index_id) {
-			glDeleteBuffers(1, &co->index_id);
-		} if (co->vertex_id) {
-			glDeleteBuffers(1, &co->vertex_id);
-		}
-
-		co->index_id = 0;
-		co->vertex_id = 0;
-		co->len = 0;
-	}
-
-	if (p_lines.size()) {
-		PoolVector<float> geometry;
-		PoolVector<uint16_t> indices;
-		int lc = p_lines.size();
-
-		geometry.resize(lc * 6);
-		indices.resize(lc * 3);
-
-		PoolVector<float>::Write vw = geometry.write();
-		PoolVector<uint16_t>::Write iw = indices.write();
-
-		PoolVector<Vector2>::Read lr = p_lines.read();
-
-		const int POLY_HEIGHT = 16384;
-
-		for (int i = 0; i < lc / 2; i++) {
-			vw[i * 12 + 0] = lr[i * 2 + 0].x;
-			vw[i * 12 + 1] = lr[i * 2 + 0].y;
-			vw[i * 12 + 2] = POLY_HEIGHT;
-
-			vw[i * 12 + 3] = lr[i * 2 + 1].x;
-			vw[i * 12 + 4] = lr[i * 2 + 1].y;
-			vw[i * 12 + 5] = POLY_HEIGHT;
-
-			vw[i * 12 + 6] = lr[i * 2 + 1].x;
-			vw[i * 12 + 7] = lr[i * 2 + 1].y;
-			vw[i * 12 + 8] = -POLY_HEIGHT;
-
-			vw[i * 12 + 9] = lr[i * 2 + 0].x;
-			vw[i * 12 + 10] = lr[i * 2 + 0].y;
-			vw[i * 12 + 11] = -POLY_HEIGHT;
-
-			iw[i * 6 + 0] = i * 4 + 0;
-			iw[i * 6 + 1] = i * 4 + 1;
-			iw[i * 6 + 2] = i * 4 + 2;
-
-			iw[i * 6 + 3] = i * 4 + 2;
-			iw[i * 6 + 4] = i * 4 + 3;
-			iw[i * 6 + 5] = i * 4 + 0;
-		}
-
-		//if same buffer len is being set, just use BufferSubData to avoid a pipeline flush
-
-		if (!co->vertex_id) {
-			glGenBuffers(1, &co->vertex_id);
-			glBindBuffer(GL_ARRAY_BUFFER, co->vertex_id);
-			glBufferData(GL_ARRAY_BUFFER, lc * 6 * sizeof(real_t), vw.ptr(), GL_STATIC_DRAW);
-		} else {
-			glBindBuffer(GL_ARRAY_BUFFER, co->vertex_id);
-			glBufferSubData(GL_ARRAY_BUFFER, 0, lc * 6 * sizeof(real_t), vw.ptr());
-		}
-
-		glBindBuffer(GL_ARRAY_BUFFER, 0); //unbind
-
-		if (!co->index_id) {
-			glGenBuffers(1, &co->index_id);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, co->index_id);
-			glBufferData(GL_ELEMENT_ARRAY_BUFFER, lc * 3 * sizeof(uint16_t), iw.ptr(), GL_DYNAMIC_DRAW);
-		} else {
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, co->index_id);
-			glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, lc * 3 * sizeof(uint16_t), iw.ptr());
-		}
-
-		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0); //unbind
-
-		co->len = lc;
-	}
+void LightStorage::lightmap_instance_free(RID p_lightmap) {
 }
-*/
+
+void LightStorage::lightmap_instance_set_transform(RID p_lightmap, const Transform3D &p_transform) {
+}
+
+/* SHADOW ATLAS API */
+
+RID LightStorage::shadow_atlas_create() {
+	return RID();
+}
+
+void LightStorage::shadow_atlas_free(RID p_atlas) {
+}
+
+void LightStorage::shadow_atlas_set_size(RID p_atlas, int p_size, bool p_16_bits) {
+}
+
+void LightStorage::shadow_atlas_set_quadrant_subdivision(RID p_atlas, int p_quadrant, int p_subdivision) {
+}
+
+bool LightStorage::shadow_atlas_update_light(RID p_atlas, RID p_light_intance, float p_coverage, uint64_t p_light_version) {
+	return false;
+}
+
+void LightStorage::shadow_atlas_update(RID p_atlas) {
+}
+
+void LightStorage::directional_shadow_atlas_set_size(int p_size, bool p_16_bits) {
+}
+
+int LightStorage::get_directional_light_shadow_size(RID p_light_intance) {
+	return 0;
+}
+
+void LightStorage::set_directional_shadow_count(int p_count) {
+}
 
 #endif // !GLES3_ENABLED

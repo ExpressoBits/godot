@@ -22,7 +22,7 @@ namespace GodotTools.Export
         public bool FullAot;
 
         private bool _useInterpreter;
-        public bool UseInterpreter { get => _useInterpreter && !LLVMOnly; set => _useInterpreter = value; }
+        public bool UseInterpreter { readonly get => _useInterpreter && !LLVMOnly; set => _useInterpreter = value; }
 
         public string[] ExtraAotOptions;
         public string[] ExtraOptimizerOptions;
@@ -592,7 +592,6 @@ MONO_AOT_MODE_LAST = 1000,
             switch (platform)
             {
                 case OS.Platforms.Windows:
-                case OS.Platforms.UWP:
                 {
                     return $"windows-{arch}";
                 }
@@ -603,10 +602,6 @@ MONO_AOT_MODE_LAST = 1000,
                 case OS.Platforms.LinuxBSD:
                 {
                     return $"linux-{arch}";
-                }
-                case OS.Platforms.Haiku:
-                {
-                    return $"{platform}-{arch}";
                 }
                 default:
                     throw new NotSupportedException($"Platform not supported: {platform}");

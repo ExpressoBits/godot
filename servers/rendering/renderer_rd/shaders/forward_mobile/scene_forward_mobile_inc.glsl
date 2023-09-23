@@ -14,6 +14,7 @@
 #endif
 #endif
 
+#define USING_MOBILE_RENDERER
 /* don't exceed 128 bytes!! */
 /* put instance data into our push content, not a array */
 layout(push_constant, std430) uniform DrawCall {
@@ -35,33 +36,21 @@ draw_call;
 
 #include "../light_data_inc.glsl"
 
-#define SAMPLER_NEAREST_CLAMP 0
-#define SAMPLER_LINEAR_CLAMP 1
-#define SAMPLER_NEAREST_WITH_MIPMAPS_CLAMP 2
-#define SAMPLER_LINEAR_WITH_MIPMAPS_CLAMP 3
-#define SAMPLER_NEAREST_WITH_MIPMAPS_ANISOTROPIC_CLAMP 4
-#define SAMPLER_LINEAR_WITH_MIPMAPS_ANISOTROPIC_CLAMP 5
-#define SAMPLER_NEAREST_REPEAT 6
-#define SAMPLER_LINEAR_REPEAT 7
-#define SAMPLER_NEAREST_WITH_MIPMAPS_REPEAT 8
-#define SAMPLER_LINEAR_WITH_MIPMAPS_REPEAT 9
-#define SAMPLER_NEAREST_WITH_MIPMAPS_ANISOTROPIC_REPEAT 10
-#define SAMPLER_LINEAR_WITH_MIPMAPS_ANISOTROPIC_REPEAT 11
-
-layout(set = 0, binding = 1) uniform sampler material_samplers[12];
+#include "../samplers_inc.glsl"
 
 layout(set = 0, binding = 2) uniform sampler shadow_sampler;
 
 layout(set = 0, binding = 3) uniform sampler decal_sampler;
 layout(set = 0, binding = 4) uniform sampler light_projector_sampler;
 
-#define INSTANCE_FLAGS_NON_UNIFORM_SCALE (1 << 5)
-#define INSTANCE_FLAGS_USE_GI_BUFFERS (1 << 6)
-#define INSTANCE_FLAGS_USE_SDFGI (1 << 7)
-#define INSTANCE_FLAGS_USE_LIGHTMAP_CAPTURE (1 << 8)
-#define INSTANCE_FLAGS_USE_LIGHTMAP (1 << 9)
-#define INSTANCE_FLAGS_USE_SH_LIGHTMAP (1 << 10)
-#define INSTANCE_FLAGS_USE_VOXEL_GI (1 << 11)
+#define INSTANCE_FLAGS_NON_UNIFORM_SCALE (1 << 4)
+#define INSTANCE_FLAGS_USE_GI_BUFFERS (1 << 5)
+#define INSTANCE_FLAGS_USE_SDFGI (1 << 6)
+#define INSTANCE_FLAGS_USE_LIGHTMAP_CAPTURE (1 << 7)
+#define INSTANCE_FLAGS_USE_LIGHTMAP (1 << 8)
+#define INSTANCE_FLAGS_USE_SH_LIGHTMAP (1 << 9)
+#define INSTANCE_FLAGS_USE_VOXEL_GI (1 << 10)
+#define INSTANCE_FLAGS_PARTICLES (1 << 11)
 #define INSTANCE_FLAGS_MULTIMESH (1 << 12)
 #define INSTANCE_FLAGS_MULTIMESH_FORMAT_2D (1 << 13)
 #define INSTANCE_FLAGS_MULTIMESH_HAS_COLOR (1 << 14)
@@ -153,8 +142,15 @@ layout(set = 1, binding = 5) uniform highp texture2D directional_shadow_atlas;
 // this needs to change to providing just the lightmap we're using..
 layout(set = 1, binding = 6) uniform texture2DArray lightmap_textures[MAX_LIGHTMAP_TEXTURES];
 
+#ifdef USE_MULTIVIEW
+layout(set = 1, binding = 9) uniform highp texture2DArray depth_buffer;
+layout(set = 1, binding = 10) uniform mediump texture2DArray color_buffer;
+#define multiviewSampler sampler2DArray
+#else
 layout(set = 1, binding = 9) uniform highp texture2D depth_buffer;
 layout(set = 1, binding = 10) uniform mediump texture2D color_buffer;
+#define multiviewSampler sampler2D
+#endif // USE_MULTIVIEW
 
 /* Set 2 Skeleton & Instancing (can change per item) */
 

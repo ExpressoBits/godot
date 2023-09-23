@@ -57,15 +57,6 @@ namespace glslang {
 //
 
 //
-// Wrapper for Linux call to DetachThread.  This is required as pthread_cleanup_push() expects
-// the cleanup routine to return void.
-//
-static void DetachThreadLinux(void *)
-{
-    DetachThread();
-}
-
-//
 // Thread Local Storage Operations
 //
 inline OS_TLSIndex PthreadKeyToTLSIndex(pthread_key_t key)
@@ -85,7 +76,7 @@ OS_TLSIndex OS_AllocTLSIndex()
     //
     // Create global pool key.
     //
-    if ((pthread_key_create(&pPoolIndex, NULL)) != 0) {
+    if ((pthread_key_create(&pPoolIndex, nullptr)) != 0) {
         assert(0 && "OS_AllocTLSIndex(): Unable to allocate Thread Local Storage");
         return OS_INVALID_TLS_INDEX;
     }

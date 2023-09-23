@@ -90,7 +90,7 @@ namespace Godot.Bridge
         internal static unsafe IntPtr CreateManagedForGodotObjectBinding(godot_string_name* nativeTypeName,
             IntPtr godotObject)
         {
-            // TODO: Optimize with source generators and delegate pointers
+            // TODO: Optimize with source generators and delegate pointers.
 
             try
             {
@@ -100,7 +100,7 @@ namespace Godot.Bridge
 
                 Type nativeType = TypeGetProxyClass(nativeTypeNameStr) ?? throw new InvalidOperationException(
                     "Wrapper class not found for type: " + nativeTypeNameStr);
-                var obj = (Object)FormatterServices.GetUninitializedObject(nativeType);
+                var obj = (GodotObject)FormatterServices.GetUninitializedObject(nativeType);
 
                 var ctor = nativeType.GetConstructor(
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance,
@@ -124,7 +124,7 @@ namespace Godot.Bridge
             IntPtr godotObject,
             godot_variant** args, int argCount)
         {
-            // TODO: Optimize with source generators and delegate pointers
+            // TODO: Optimize with source generators and delegate pointers.
 
             try
             {
@@ -150,7 +150,7 @@ namespace Godot.Bridge
                     }
                 }
 
-                var obj = (Object)FormatterServices.GetUninitializedObject(scriptType);
+                var obj = (GodotObject)FormatterServices.GetUninitializedObject(scriptType);
 
                 var parameters = ctor.GetParameters();
                 int paramCount = parameters.Length;
@@ -159,7 +159,7 @@ namespace Godot.Bridge
 
                 for (int i = 0; i < paramCount; i++)
                 {
-                    invokeParams[i] = Marshaling.ConvertVariantToManagedObjectOfType(
+                    invokeParams[i] = DelegateUtils.RuntimeTypeConversionHelper.ConvertToObjectOfType(
                         *args[i], parameters[i].ParameterType);
                 }
 
@@ -189,7 +189,7 @@ namespace Godot.Bridge
                     return;
                 }
 
-                var native = Object.InternalGetClassNativeBase(scriptType);
+                var native = GodotObject.InternalGetClassNativeBase(scriptType);
 
                 var field = native?.GetField("NativeName", BindingFlags.DeclaredOnly | BindingFlags.Static |
                                                            BindingFlags.Public | BindingFlags.NonPublic);
@@ -222,7 +222,7 @@ namespace Godot.Bridge
         {
             try
             {
-                var target = (Object?)GCHandle.FromIntPtr(gcHandlePtr).Target;
+                var target = (GodotObject?)GCHandle.FromIntPtr(gcHandlePtr).Target;
                 if (target != null)
                     target.NativePtr = newPtr;
             }
@@ -239,21 +239,50 @@ namespace Godot.Bridge
             if (nativeTypeNameStr[0] == '_')
                 nativeTypeNameStr = nativeTypeNameStr.Substring(1);
 
-            Type? wrapperType = typeof(Object).Assembly.GetType("Godot." + nativeTypeNameStr);
+            Type? wrapperType = typeof(GodotObject).Assembly.GetType("Godot." + nativeTypeNameStr);
 
             if (wrapperType == null)
             {
-                wrapperType = AppDomain.CurrentDomain.GetAssemblies()
-                    .FirstOrDefault(a => a.GetName().Name == "GodotSharpEditor")?
-                    .GetType("Godot." + nativeTypeNameStr);
+                wrapperType = GetTypeByGodotClassAttr(typeof(GodotObject).Assembly, nativeTypeNameStr);
+            }
+
+            if (wrapperType == null)
+            {
+                var editorAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                    .FirstOrDefault(a => a.GetName().Name == "GodotSharpEditor");
+                wrapperType = editorAssembly?.GetType("Godot." + nativeTypeNameStr);
+
+                if (wrapperType == null)
+                {
+                    wrapperType = GetTypeByGodotClassAttr(editorAssembly, nativeTypeNameStr);
+                }
+            }
+
+            static Type? GetTypeByGodotClassAttr(Assembly assembly, string nativeTypeNameStr)
+            {
+                var types = assembly.GetTypes();
+                foreach (var type in types)
+                {
+                    var attr = type.GetCustomAttribute<GodotClassNameAttribute>();
+                    if (attr?.Name == nativeTypeNameStr)
+                    {
+                        return type;
+                    }
+                }
+                return null;
             }
 
             static bool IsStatic(Type type) => type.IsAbstract && type.IsSealed;
 
             if (wrapperType != null && IsStatic(wrapperType))
             {
-                // A static class means this is a Godot singleton class. If an instance is needed we use Godot.Object.
-                return typeof(Object);
+                // A static class means this is a Godot singleton class. Try to get the Instance proxy type.
+                wrapperType = TypeGetProxyClass($"{nativeTypeNameStr}Instance");
+                if (wrapperType == null)
+                {
+                    // Otherwise, fallback to GodotObject.
+                    return typeof(GodotObject);
+                }
             }
 
             return wrapperType;
@@ -274,6 +303,13 @@ namespace Godot.Bridge
 
                 _pathTypeBiMap.Add(scriptPathAttr.Path, type);
 
+                // This method may be called before initialization.
+                if (NativeFuncs.godotsharp_dotnet_module_is_initialized().ToBool() && Engine.IsEditorHint())
+                {
+                    using godot_string scriptPath = Marshaling.ConvertStringToNative(scriptPathAttr.Path);
+                    NativeFuncs.godotsharp_internal_editor_file_system_update_file(scriptPath);
+                }
+
                 if (AlcReloadCfg.IsAlcReloadingEnabled)
                 {
                     AddTypeForAlcReloading(type);
@@ -293,11 +329,11 @@ namespace Godot.Bridge
                 // such as when disabling C# source generators (for whatever reason) or when using a
                 // language other than C# that has nothing similar to source generators to automate it.
 
-                var typeOfGodotObject = typeof(Object);
+                var typeOfGodotObject = typeof(GodotObject);
 
                 foreach (var type in assembly.GetTypes())
                 {
-                    if (type.IsNested)
+                    if (type.IsNested || type.IsGenericType)
                         continue;
 
                     if (!typeOfGodotObject.IsAssignableFrom(type))
@@ -314,9 +350,12 @@ namespace Godot.Bridge
 
                 if (scriptTypes != null)
                 {
-                    for (int i = 0; i < scriptTypes.Length; i++)
+                    foreach (var type in scriptTypes)
                     {
-                        LookupScriptForClass(scriptTypes[i]);
+                        if (type.IsGenericType)
+                            continue;
+
+                        LookupScriptForClass(type);
                     }
                 }
             }
@@ -328,7 +367,7 @@ namespace Godot.Bridge
         {
             try
             {
-                var owner = (Object?)GCHandle.FromIntPtr(ownerGCHandlePtr).Target;
+                var owner = (GodotObject?)GCHandle.FromIntPtr(ownerGCHandlePtr).Target;
 
                 if (owner == null)
                 {
@@ -339,7 +378,7 @@ namespace Godot.Bridge
                 *outOwnerIsNull = godot_bool.False;
 
                 owner.RaiseGodotClassSignalCallbacks(CustomUnsafe.AsRef(eventSignalName),
-                    new NativeVariantPtrArgs(args), argCount);
+                    new NativeVariantPtrArgs(args, argCount));
             }
             catch (Exception e)
             {
@@ -536,9 +575,9 @@ namespace Godot.Bridge
                     }
 
                     // ReSharper disable once RedundantNameQualifier
-                    if (!typeof(Godot.Object).IsAssignableFrom(scriptType))
+                    if (!typeof(GodotObject).IsAssignableFrom(scriptType))
                     {
-                        // The class no longer inherits Godot.Object, can't reload
+                        // The class no longer inherits GodotObject, can't reload
                         return godot_bool.False;
                     }
 
@@ -557,7 +596,8 @@ namespace Godot.Bridge
         }
 
         [UnmanagedCallersOnly]
-        internal static unsafe void UpdateScriptClassInfo(IntPtr scriptPtr, godot_bool* outTool,
+        internal static unsafe void UpdateScriptClassInfo(IntPtr scriptPtr, godot_string* outClassName,
+            godot_bool* outTool, godot_bool* outGlobal, godot_string* outIconPath,
             godot_array* outMethodsDest, godot_dictionary* outRpcFunctionsDest,
             godot_dictionary* outEventSignalsDest, godot_ref* outBaseScript)
         {
@@ -565,6 +605,8 @@ namespace Godot.Bridge
             {
                 // Performance is not critical here as this will be replaced with source generators.
                 var scriptType = _scriptTypeBiMap.GetScriptType(scriptPtr);
+
+                *outClassName = Marshaling.ConvertStringToNative(scriptType.Name);
 
                 *outTool = scriptType.GetCustomAttributes(inherit: false)
                     .OfType<ToolAttribute>()
@@ -580,13 +622,25 @@ namespace Godot.Bridge
                 if (!(*outTool).ToBool() && scriptType.Assembly.GetName().Name == "GodotTools")
                     *outTool = godot_bool.True;
 
+                var globalAttr = scriptType.GetCustomAttributes(inherit: false)
+                    .OfType<GlobalClassAttribute>()
+                    .FirstOrDefault();
+
+                *outGlobal = (globalAttr != null).ToGodotBool();
+
+                var iconAttr = scriptType.GetCustomAttributes(inherit: false)
+                    .OfType<IconAttribute>()
+                    .FirstOrDefault();
+
+                *outIconPath = Marshaling.ConvertStringToNative(iconAttr?.Path);
+
                 // Methods
 
                 // Performance is not critical here as this will be replaced with source generators.
                 using var methods = new Collections.Array();
 
                 Type? top = scriptType;
-                Type native = Object.InternalGetClassNativeBase(top);
+                Type native = GodotObject.InternalGetClassNativeBase(top);
 
                 while (top != null && top != native)
                 {
@@ -606,16 +660,24 @@ namespace Godot.Bridge
                             {
                                 foreach (var param in method.Arguments)
                                 {
-                                    methodParams.Add(new Collections.Dictionary()
+                                    var pinfo = new Collections.Dictionary()
                                     {
                                         { "name", param.Name },
                                         { "type", (int)param.Type },
                                         { "usage", (int)param.Usage }
-                                    });
+                                    };
+                                    if (param.ClassName != null)
+                                    {
+                                        pinfo["class_name"] = param.ClassName;
+                                    }
+
+                                    methodParams.Add(pinfo);
                                 }
                             }
 
                             methodInfo.Add("params", methodParams);
+
+                            methodInfo.Add("flags", (int)method.Flags);
 
                             methods.Add(methodInfo);
                         }
@@ -647,7 +709,7 @@ namespace Godot.Bridge
                             continue;
 
                         var rpcAttr = method.GetCustomAttributes(inherit: false)
-                            .OfType<RPCAttribute>().FirstOrDefault();
+                            .OfType<RpcAttribute>().FirstOrDefault();
 
                         if (rpcAttr == null)
                             continue;
@@ -666,7 +728,7 @@ namespace Godot.Bridge
                 }
 
                 *outRpcFunctionsDest = NativeFuncs.godotsharp_dictionary_new_copy(
-                    (godot_dictionary)(rpcFunctions).NativeValue);
+                    (godot_dictionary)rpcFunctions.NativeValue);
 
                 // Event signals
 
@@ -694,12 +756,18 @@ namespace Godot.Bridge
                             {
                                 foreach (var param in signal.Arguments)
                                 {
-                                    signalParams.Add(new Collections.Dictionary()
+                                    var pinfo = new Collections.Dictionary()
                                     {
                                         { "name", param.Name },
                                         { "type", (int)param.Type },
                                         { "usage", (int)param.Usage }
-                                    });
+                                    };
+                                    if (param.ClassName != null)
+                                    {
+                                        pinfo["class_name"] = param.ClassName;
+                                    }
+
+                                    signalParams.Add(pinfo);
                                 }
                             }
 
@@ -728,7 +796,11 @@ namespace Godot.Bridge
             catch (Exception e)
             {
                 ExceptionUtils.LogException(e);
+                *outClassName = default;
                 *outTool = godot_bool.False;
+                *outGlobal = godot_bool.False;
+                *outIconPath = default;
+                *outMethodsDest = NativeFuncs.godotsharp_array_new();
                 *outRpcFunctionsDest = NativeFuncs.godotsharp_dictionary_new();
                 *outEventSignalsDest = NativeFuncs.godotsharp_dictionary_new();
                 *outBaseScript = default;
@@ -827,12 +899,13 @@ namespace Godot.Bridge
                 {
                     // Weird limitation, hence the need for aux:
                     // "In the case of pointer types, you can use a stackalloc expression only in a local variable declaration to initialize the variable."
-                    var aux = stackalloc godotsharp_property_info[length];
+                    var aux = stackalloc godotsharp_property_info[stackMaxLength];
                     interopProperties = aux;
                 }
                 else
                 {
-                    interopProperties = ((godotsharp_property_info*)NativeMemory.Alloc((nuint)length, (nuint)sizeof(godotsharp_property_info)))!;
+                    interopProperties = ((godotsharp_property_info*)NativeMemory.Alloc(
+                        (nuint)length, (nuint)sizeof(godotsharp_property_info)))!;
                 }
 
                 try
@@ -858,8 +931,8 @@ namespace Godot.Bridge
 
                     addPropInfoFunc(scriptPtr, &currentClassName, interopProperties, length);
 
-                    // We're borrowing the StringName's without making an owning copy, so the
-                    // managed collection needs to be kept alive until `addPropInfoFunc` returns.
+                    // We're borrowing the native value of the StringName entries.
+                    // The dictionary needs to be kept alive until `addPropInfoFunc` returns.
                     GC.KeepAlive(properties);
                 }
                 finally
@@ -884,12 +957,55 @@ namespace Godot.Bridge
         {
             // Careful with padding...
             public godot_string_name Name; // Not owned
-            public godot_variant Value;
+            public godot_variant Value; // Not owned
+        }
 
-            public void Dispose()
+        private delegate bool InvokeGodotClassStaticMethodDelegate(in godot_string_name method, NativeVariantPtrArgs args, out godot_variant ret);
+
+        [UnmanagedCallersOnly]
+        internal static unsafe godot_bool CallStatic(IntPtr scriptPtr, godot_string_name* method,
+            godot_variant** args, int argCount, godot_variant_call_error* refCallError, godot_variant* ret)
+        {
+            // TODO: Optimize with source generators and delegate pointers.
+
+            try
             {
-                Value.Dispose();
+                Type scriptType = _scriptTypeBiMap.GetScriptType(scriptPtr);
+
+                Type? top = scriptType;
+                Type native = GodotObject.InternalGetClassNativeBase(top);
+
+                while (top != null && top != native)
+                {
+                    var invokeGodotClassStaticMethod = top.GetMethod(
+                        "InvokeGodotClassStaticMethod",
+                        BindingFlags.DeclaredOnly | BindingFlags.Static |
+                        BindingFlags.NonPublic | BindingFlags.Public);
+
+                    if (invokeGodotClassStaticMethod != null)
+                    {
+                        var invoked = invokeGodotClassStaticMethod.CreateDelegate<InvokeGodotClassStaticMethodDelegate>()(
+                            CustomUnsafe.AsRef(method), new NativeVariantPtrArgs(args, argCount), out godot_variant retValue);
+                        if (invoked)
+                        {
+                            *ret = retValue;
+                            return godot_bool.True;
+                        }
+                    }
+
+                    top = top.BaseType;
+                }
             }
+            catch (Exception e)
+            {
+                ExceptionUtils.LogException(e);
+                *ret = default;
+                return godot_bool.False;
+            }
+
+            *ret = default;
+            (*refCallError).Error = godot_variant_call_error_error.GODOT_CALL_ERROR_CALL_ERROR_INVALID_METHOD;
+            return godot_bool.False;
         }
 
         [UnmanagedCallersOnly]
@@ -899,7 +1015,7 @@ namespace Godot.Bridge
             try
             {
                 Type? top = _scriptTypeBiMap.GetScriptType(scriptPtr);
-                Type native = Object.InternalGetClassNativeBase(top);
+                Type native = GodotObject.InternalGetClassNativeBase(top);
 
                 while (top != null && top != native)
                 {
@@ -928,10 +1044,35 @@ namespace Godot.Bridge
                 if (getGodotPropertyDefaultValuesMethod == null)
                     return;
 
-                var defaultValues = (Dictionary<StringName, object>?)
-                    getGodotPropertyDefaultValuesMethod.Invoke(null, null);
+                var defaultValuesObj = getGodotPropertyDefaultValuesMethod.Invoke(null, null);
 
-                if (defaultValues == null || defaultValues.Count <= 0)
+                if (defaultValuesObj == null)
+                    return;
+
+                Dictionary<StringName, Variant> defaultValues;
+
+                if (defaultValuesObj is Dictionary<StringName, object> defaultValuesLegacy)
+                {
+                    // We have to support this for some time, otherwise this could cause data loss for projects
+                    // built with previous releases. Ideally, we should remove this before Godot 4.0 stable.
+
+                    if (defaultValuesLegacy.Count <= 0)
+                        return;
+
+                    defaultValues = new();
+
+                    foreach (var pair in defaultValuesLegacy)
+                    {
+                        defaultValues[pair.Key] = Variant.CreateTakingOwnershipOfDisposableValue(
+                            DelegateUtils.RuntimeTypeConversionHelper.ConvertToVariant(pair.Value));
+                    }
+                }
+                else
+                {
+                    defaultValues = (Dictionary<StringName, Variant>)defaultValuesObj;
+                }
+
+                if (defaultValues.Count <= 0)
                     return;
 
                 int length = defaultValues.Count;
@@ -947,12 +1088,13 @@ namespace Godot.Bridge
                 {
                     // Weird limitation, hence the need for aux:
                     // "In the case of pointer types, you can use a stackalloc expression only in a local variable declaration to initialize the variable."
-                    var aux = stackalloc godotsharp_property_def_val_pair[length];
+                    var aux = stackalloc godotsharp_property_def_val_pair[stackMaxLength];
                     interopDefaultValues = aux;
                 }
                 else
                 {
-                    interopDefaultValues = ((godotsharp_property_def_val_pair*)NativeMemory.Alloc((nuint)length, (nuint)sizeof(godotsharp_property_def_val_pair)))!;
+                    interopDefaultValues = ((godotsharp_property_def_val_pair*)NativeMemory.Alloc(
+                        (nuint)length, (nuint)sizeof(godotsharp_property_def_val_pair)))!;
                 }
 
                 try
@@ -963,7 +1105,7 @@ namespace Godot.Bridge
                         godotsharp_property_def_val_pair interopProperty = new()
                         {
                             Name = (godot_string_name)defaultValuePair.Key.NativeValue, // Not owned
-                            Value = Marshaling.ConvertManagedObjectToVariant(defaultValuePair.Value)
+                            Value = (godot_variant)defaultValuePair.Value.NativeVar // Not owned
                         };
 
                         interopDefaultValues[i] = interopProperty;
@@ -973,15 +1115,12 @@ namespace Godot.Bridge
 
                     addDefValFunc(scriptPtr, interopDefaultValues, length);
 
-                    // We're borrowing the StringName's without making an owning copy, so the
-                    // managed collection needs to be kept alive until `addDefValFunc` returns.
+                    // We're borrowing the native value of the StringName and Variant entries.
+                    // The dictionary needs to be kept alive until `addDefValFunc` returns.
                     GC.KeepAlive(defaultValues);
                 }
                 finally
                 {
-                    for (int i = 0; i < length; i++)
-                        interopDefaultValues[i].Dispose();
-
                     if (!useStack)
                         NativeMemory.Free(interopDefaultValues);
                 }

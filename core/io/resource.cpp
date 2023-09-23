@@ -1,32 +1,32 @@
-/*************************************************************************/
-/*  resource.cpp                                                         */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  resource.cpp                                                          */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "resource.h"
 
@@ -147,15 +147,28 @@ bool Resource::editor_can_reload_from_file() {
 	return true; //by default yes
 }
 
+void Resource::connect_changed(const Callable &p_callable, uint32_t p_flags) {
+	if (!is_connected(CoreStringNames::get_singleton()->changed, p_callable) || p_flags & CONNECT_REFERENCE_COUNTED) {
+		connect(CoreStringNames::get_singleton()->changed, p_callable, p_flags);
+	}
+}
+
+void Resource::disconnect_changed(const Callable &p_callable) {
+	if (is_connected(CoreStringNames::get_singleton()->changed, p_callable)) {
+		disconnect(CoreStringNames::get_singleton()->changed, p_callable);
+	}
+}
+
 void Resource::reset_state() {
 }
+
 Error Resource::copy_from(const Ref<Resource> &p_resource) {
 	ERR_FAIL_COND_V(p_resource.is_null(), ERR_INVALID_PARAMETER);
 	if (get_class() != p_resource->get_class()) {
 		return ERR_INVALID_PARAMETER;
 	}
 
-	reset_state(); //may want to reset state
+	reset_state(); // May want to reset state.
 
 	List<PropertyInfo> pi;
 	p_resource->get_property_list(&pi);
@@ -226,6 +239,7 @@ void Resource::configure_for_local_scene(Node *p_for_scene, HashMap<Ref<Resource
 	List<PropertyInfo> plist;
 	get_property_list(&plist);
 
+	reset_local_to_scene();
 	local_scene = p_for_scene;
 
 	for (const PropertyInfo &E : plist) {
@@ -260,15 +274,35 @@ Ref<Resource> Resource::duplicate(bool p_subresources) const {
 		}
 		Variant p = get(E.name);
 
-		if ((p.get_type() == Variant::DICTIONARY || p.get_type() == Variant::ARRAY)) {
-			r->set(E.name, p.duplicate(p_subresources));
-		} else if (p.get_type() == Variant::OBJECT && (p_subresources || (E.usage & PROPERTY_USAGE_DO_NOT_SHARE_ON_DUPLICATE))) {
-			Ref<Resource> sr = p;
-			if (sr.is_valid()) {
-				r->set(E.name, sr->duplicate(p_subresources));
+		switch (p.get_type()) {
+			case Variant::Type::DICTIONARY:
+			case Variant::Type::ARRAY:
+			case Variant::Type::PACKED_BYTE_ARRAY:
+			case Variant::Type::PACKED_COLOR_ARRAY:
+			case Variant::Type::PACKED_INT32_ARRAY:
+			case Variant::Type::PACKED_INT64_ARRAY:
+			case Variant::Type::PACKED_FLOAT32_ARRAY:
+			case Variant::Type::PACKED_FLOAT64_ARRAY:
+			case Variant::Type::PACKED_STRING_ARRAY:
+			case Variant::Type::PACKED_VECTOR2_ARRAY:
+			case Variant::Type::PACKED_VECTOR3_ARRAY: {
+				r->set(E.name, p.duplicate(p_subresources));
+			} break;
+
+			case Variant::Type::OBJECT: {
+				if (!(E.usage & PROPERTY_USAGE_NEVER_DUPLICATE) && (p_subresources || (E.usage & PROPERTY_USAGE_ALWAYS_DUPLICATE))) {
+					Ref<Resource> sr = p;
+					if (sr.is_valid()) {
+						r->set(E.name, sr->duplicate(p_subresources));
+					}
+				} else {
+					r->set(E.name, p);
+				}
+			} break;
+
+			default: {
+				r->set(E.name, p);
 			}
-		} else {
-			r->set(E.name, p);
 		}
 	}
 
@@ -300,23 +334,6 @@ RID Resource::get_rid() const {
 	}
 
 	return RID();
-}
-
-void Resource::register_owner(Object *p_owner) {
-	owners.insert(p_owner->get_instance_id());
-}
-
-void Resource::unregister_owner(Object *p_owner) {
-	owners.erase(p_owner->get_instance_id());
-}
-
-void Resource::notify_change_to_owners() {
-	for (const ObjectID &E : owners) {
-		Object *obj = ObjectDB::get_instance(E);
-		ERR_CONTINUE_MSG(!obj, "Object was deleted, while still owning a resource."); //wtf
-		//TODO store string
-		obj->call("resource_changed", Ref<Resource>(this));
-	}
 }
 
 #ifdef TOOLS_ENABLED
@@ -366,6 +383,10 @@ void Resource::setup_local_to_scene() {
 	emit_signal(SNAME("setup_local_to_scene_requested"));
 }
 
+void Resource::reset_local_to_scene() {
+	// Restores the state as if setup_local_to_scene() hadn't been called.
+}
+
 Node *(*Resource::_get_local_scene_func)() = nullptr;
 void (*Resource::_update_configuration_warning)() = nullptr;
 
@@ -383,10 +404,6 @@ void Resource::set_as_translation_remapped(bool p_remapped) {
 	}
 
 	ResourceCache::lock.unlock();
-}
-
-bool Resource::is_translation_remapped() const {
-	return remapped_list.in_list();
 }
 
 #ifdef TOOLS_ENABLED
@@ -427,6 +444,7 @@ void Resource::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_local_to_scene"), &Resource::is_local_to_scene);
 	ClassDB::bind_method(D_METHOD("get_local_scene"), &Resource::get_local_scene);
 	ClassDB::bind_method(D_METHOD("setup_local_to_scene"), &Resource::setup_local_to_scene);
+
 	ClassDB::bind_method(D_METHOD("emit_changed"), &Resource::emit_changed);
 
 	ClassDB::bind_method(D_METHOD("duplicate", "subresources"), &Resource::duplicate, DEFVAL(false));
@@ -436,7 +454,7 @@ void Resource::_bind_methods() {
 	ADD_GROUP("Resource", "resource_");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "resource_local_to_scene"), "set_local_to_scene", "is_local_to_scene");
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "resource_path", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR), "set_path", "get_path");
-	ADD_PROPERTY(PropertyInfo(Variant::STRING_NAME, "resource_name"), "set_name", "get_name");
+	ADD_PROPERTY(PropertyInfo(Variant::STRING, "resource_name"), "set_name", "get_name");
 
 	MethodInfo get_rid_bind("_get_rid");
 	get_rid_bind.return_val.type = Variant::RID;
@@ -452,9 +470,6 @@ Resource::~Resource() {
 		ResourceCache::lock.lock();
 		ResourceCache::resources.erase(path_cache);
 		ResourceCache::lock.unlock();
-	}
-	if (owners.size()) {
-		WARN_PRINT("Resource is still owned.");
 	}
 }
 
@@ -481,15 +496,12 @@ void ResourceCache::clear() {
 	resources.clear();
 }
 
-void ResourceCache::reload_externals() {
-}
-
 bool ResourceCache::has(const String &p_path) {
 	lock.lock();
 
 	Resource **res = resources.getptr(p_path);
 
-	if (res && (*res)->reference_get_count() == 0) {
+	if (res && (*res)->get_reference_count() == 0) {
 		// This resource is in the process of being deleted, ignore its existence.
 		(*res)->path_cache = String();
 		resources.erase(p_path);
@@ -529,9 +541,26 @@ Ref<Resource> ResourceCache::get_ref(const String &p_path) {
 
 void ResourceCache::get_cached_resources(List<Ref<Resource>> *p_resources) {
 	lock.lock();
+
+	LocalVector<String> to_remove;
+
 	for (KeyValue<String, Resource *> &E : resources) {
-		p_resources->push_back(Ref<Resource>(E.value));
+		Ref<Resource> ref = Ref<Resource>(E.value);
+
+		if (!ref.is_valid()) {
+			// This resource is in the process of being deleted, ignore its existence
+			E.value->path_cache = String();
+			to_remove.push_back(E.key);
+			continue;
+		}
+
+		p_resources->push_back(ref);
 	}
+
+	for (const String &E : to_remove) {
+		resources.erase(E);
+	}
+
 	lock.unlock();
 }
 

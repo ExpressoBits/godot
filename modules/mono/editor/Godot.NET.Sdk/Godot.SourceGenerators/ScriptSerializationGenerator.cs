@@ -16,7 +16,7 @@ namespace Godot.SourceGenerators
 
         public void Execute(GeneratorExecutionContext context)
         {
-            if (context.AreGodotSourceGeneratorsDisabled())
+            if (context.IsGodotSourceGeneratorDisabled("ScriptSerialization"))
                 return;
 
             INamedTypeSymbol[] godotClasses = context
@@ -66,14 +66,14 @@ namespace Godot.SourceGenerators
         {
             INamespaceSymbol namespaceSymbol = symbol.ContainingNamespace;
             string classNs = namespaceSymbol != null && !namespaceSymbol.IsGlobalNamespace ?
-                namespaceSymbol.FullQualifiedName() :
+                namespaceSymbol.FullQualifiedNameOmitGlobal() :
                 string.Empty;
             bool hasNamespace = classNs.Length != 0;
 
             bool isInnerClass = symbol.ContainingType != null;
 
-            string uniqueHint = symbol.FullQualifiedName().SanitizeQualifiedNameForUniqueHint()
-                                + "_ScriptSerialization_Generated";
+            string uniqueHint = symbol.FullQualifiedNameOmitGlobal().SanitizeQualifiedNameForUniqueHint()
+                                + "_ScriptSerialization.generated";
 
             var source = new StringBuilder();
 
@@ -113,7 +113,7 @@ namespace Godot.SourceGenerators
             var propertySymbols = members
                 .Where(s => !s.IsStatic && s.Kind == SymbolKind.Property)
                 .Cast<IPropertySymbol>()
-                .Where(s => !s.IsIndexer);
+                .Where(s => !s.IsIndexer && s.ExplicitInterfaceImplementations.Length == 0);
 
             var fieldSymbols = members
                 .Where(s => !s.IsStatic && s.Kind == SymbolKind.Field && !s.IsImplicitlyDeclared)
@@ -149,6 +149,8 @@ namespace Godot.SourceGenerators
                 godotSignalDelegates.Add(new(signalName, signalDelegateSymbol, invokeMethodData.Value));
             }
 
+            source.Append("    /// <inheritdoc/>\n");
+            source.Append("    [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]\n");
             source.Append(
                 "    protected override void SaveGodotObjectData(global::Godot.Bridge.GodotSerializationInfo info)\n    {\n");
             source.Append("        base.SaveGodotObjectData(info);\n");
@@ -162,7 +164,8 @@ namespace Godot.SourceGenerators
                 source.Append("        info.AddProperty(PropertyName.")
                     .Append(propertyName)
                     .Append(", ")
-                    .AppendManagedToVariantExpr(string.Concat("this.", propertyName), property.Type)
+                    .AppendManagedToVariantExpr(string.Concat("this.", propertyName),
+                        property.PropertySymbol.Type, property.Type)
                     .Append(");\n");
             }
 
@@ -175,7 +178,8 @@ namespace Godot.SourceGenerators
                 source.Append("        info.AddProperty(PropertyName.")
                     .Append(fieldName)
                     .Append(", ")
-                    .AppendManagedToVariantExpr(string.Concat("this.", fieldName), field.Type)
+                    .AppendManagedToVariantExpr(string.Concat("this.", fieldName),
+                        field.FieldSymbol.Type, field.Type)
                     .Append(");\n");
             }
 
@@ -194,6 +198,8 @@ namespace Godot.SourceGenerators
 
             source.Append("    }\n");
 
+            source.Append("    /// <inheritdoc/>\n");
+            source.Append("    [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]\n");
             source.Append(
                 "    protected override void RestoreGodotObjectData(global::Godot.Bridge.GodotSerializationInfo info)\n    {\n");
             source.Append("        base.RestoreGodotObjectData(info);\n");
@@ -241,7 +247,7 @@ namespace Godot.SourceGenerators
             foreach (var signalDelegate in godotSignalDelegates)
             {
                 string signalName = signalDelegate.Name;
-                string signalDelegateQualifiedName = signalDelegate.DelegateSymbol.FullQualifiedName();
+                string signalDelegateQualifiedName = signalDelegate.DelegateSymbol.FullQualifiedNameIncludeGlobal();
 
                 source.Append("        if (info.TryGetSignalEventDelegate<")
                     .Append(signalDelegateQualifiedName)

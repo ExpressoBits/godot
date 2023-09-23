@@ -1,32 +1,32 @@
-/*************************************************************************/
-/*  doc_tools.cpp                                                        */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  doc_tools.cpp                                                         */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "doc_tools.h"
 
@@ -36,10 +36,11 @@
 #include "core/io/compression.h"
 #include "core/io/dir_access.h"
 #include "core/io/marshalls.h"
+#include "core/io/resource_importer.h"
 #include "core/object/script_language.h"
 #include "core/string/translation.h"
-#include "core/version.h"
 #include "editor/editor_settings.h"
+#include "editor/export/editor_export.h"
 #include "scene/resources/theme.h"
 #include "scene/theme/theme_db.h"
 
@@ -335,7 +336,7 @@ static Variant get_documentation_default_value(const StringName &p_class_name, c
 	Variant default_value = Variant();
 	r_default_value_valid = false;
 
-	if (ClassDB::can_instantiate(p_class_name)) {
+	if (ClassDB::can_instantiate(p_class_name) && !ClassDB::is_virtual(p_class_name)) { // Keep this condition in sync with ClassDB::class_get_default_property_value.
 		default_value = ClassDB::class_get_default_property_value(p_class_name, p_property_name, &r_default_value_valid);
 	} else {
 		// Cannot get default value of classes that can't be instantiated
@@ -386,7 +387,13 @@ void DocTools::generate(bool p_basic_types) {
 			List<PropertyInfo> properties;
 			List<PropertyInfo> own_properties;
 
-			// Special case for editor and project settings, so they can be documented.
+			// Special cases for editor/project settings, and ResourceImporter classes,
+			// we have to rely on Object's property list to get settings and import options.
+			// Otherwise we just use ClassDB's property list (pure registered properties).
+
+			bool properties_from_instance = true; // To skip `script`, etc.
+			bool import_option = false; // Special case for default value.
+			HashMap<StringName, Variant> import_options_default;
 			if (name == "EditorSettings") {
 				// We don't create the full blown EditorSettings (+ config file) with `create()`,
 				// instead we just make a local instance to get default values.
@@ -396,11 +403,36 @@ void DocTools::generate(bool p_basic_types) {
 			} else if (name == "ProjectSettings") {
 				ProjectSettings::get_singleton()->get_property_list(&properties);
 				own_properties = properties;
+			} else if (ClassDB::is_parent_class(name, "ResourceImporter") && name != "EditorImportPlugin" && ClassDB::can_instantiate(name)) {
+				import_option = true;
+				ResourceImporter *resimp = Object::cast_to<ResourceImporter>(ClassDB::instantiate(name));
+				List<ResourceImporter::ImportOption> options;
+				resimp->get_import_options("", &options);
+				for (int i = 0; i < options.size(); i++) {
+					const PropertyInfo &prop = options[i].option;
+					properties.push_back(prop);
+					import_options_default[prop.name] = options[i].default_value;
+				}
+				own_properties = properties;
+				memdelete(resimp);
+			} else if (name.begins_with("EditorExportPlatform") && ClassDB::can_instantiate(name)) {
+				properties_from_instance = false;
+				Ref<EditorExportPlatform> platform = Object::cast_to<EditorExportPlatform>(ClassDB::instantiate(name));
+				if (platform.is_valid()) {
+					List<EditorExportPlatform::ExportOption> options;
+					platform->get_export_options(&options);
+					for (const EditorExportPlatform::ExportOption &E : options) {
+						properties.push_back(E.option);
+					}
+					own_properties = properties;
+				}
 			} else {
+				properties_from_instance = false;
 				ClassDB::get_property_list(name, &properties);
 				ClassDB::get_property_list(name, &own_properties, true);
 			}
 
+			// Sort is still needed here to handle inherited properties, even though it is done below, do not remove.
 			properties.sort();
 			own_properties.sort();
 
@@ -410,6 +442,13 @@ void DocTools::generate(bool p_basic_types) {
 				if (EO && EO->get() == E) {
 					inherited = false;
 					EO = EO->next();
+				}
+
+				if (properties_from_instance) {
+					if (E.name == "resource_local_to_scene" || E.name == "resource_name" || E.name == "resource_path" || E.name == "script") {
+						// Don't include spurious properties from Object property list.
+						continue;
+					}
 				}
 
 				if (E.usage & PROPERTY_USAGE_GROUP || E.usage & PROPERTY_USAGE_SUBGROUP || E.usage & PROPERTY_USAGE_CATEGORY || E.usage & PROPERTY_USAGE_INTERNAL || (E.type == Variant::NIL && E.usage & PROPERTY_USAGE_ARRAY)) {
@@ -431,16 +470,9 @@ void DocTools::generate(bool p_basic_types) {
 				bool default_value_valid = false;
 				Variant default_value;
 
-				if (name == "EditorSettings") {
-					if (E.name == "resource_local_to_scene" || E.name == "resource_name" || E.name == "resource_path" || E.name == "script") {
-						// Don't include spurious properties in the generated EditorSettings class reference.
-						continue;
-					}
-				}
-
 				if (name == "ProjectSettings") {
 					// Special case for project settings, so that settings are not taken from the current project's settings
-					if (E.name == "script" || !ProjectSettings::get_singleton()->is_builtin_setting(E.name)) {
+					if (!ProjectSettings::get_singleton()->is_builtin_setting(E.name)) {
 						continue;
 					}
 					if (E.usage & PROPERTY_USAGE_EDITOR) {
@@ -449,6 +481,11 @@ void DocTools::generate(bool p_basic_types) {
 							default_value_valid = true;
 						}
 					}
+				} else if (name == "EditorSettings") {
+					// Special case for editor settings, to prevent hardware or OS specific settings to affect the result.
+				} else if (import_option) {
+					default_value = import_options_default[E.name];
+					default_value_valid = true;
 				} else {
 					default_value = get_documentation_default_value(name, E.name, default_value_valid);
 					if (inherited) {
@@ -461,7 +498,7 @@ void DocTools::generate(bool p_basic_types) {
 				}
 
 				if (default_value_valid && default_value.get_type() != Variant::OBJECT) {
-					prop.default_value = default_value.get_construct_string().replace("\n", " ");
+					prop.default_value = DocData::get_default_value_string(default_value);
 				}
 
 				StringName setter = ClassDB::get_property_setter(name, E.name);
@@ -479,6 +516,7 @@ void DocTools::generate(bool p_basic_types) {
 						found_type = true;
 						if (retinfo.type == Variant::INT && retinfo.usage & (PROPERTY_USAGE_CLASS_IS_ENUM | PROPERTY_USAGE_CLASS_IS_BITFIELD)) {
 							prop.enumeration = retinfo.class_name;
+							prop.is_bitfield = retinfo.usage & PROPERTY_USAGE_CLASS_IS_BITFIELD;
 							prop.type = "int";
 						} else if (retinfo.class_name != StringName()) {
 							prop.type = retinfo.class_name;
@@ -513,9 +551,10 @@ void DocTools::generate(bool p_basic_types) {
 				c.properties.push_back(prop);
 			}
 
+			c.properties.sort();
+
 			List<MethodInfo> method_list;
 			ClassDB::get_method_list(name, &method_list, true);
-			method_list.sort();
 
 			for (const MethodInfo &E : method_list) {
 				if (E.name.is_empty() || (E.name[0] == '_' && !(E.flags & METHOD_FLAG_VIRTUAL))) {
@@ -548,6 +587,8 @@ void DocTools::generate(bool p_basic_types) {
 
 				c.methods.push_back(method);
 			}
+
+			c.methods.sort();
 
 			List<MethodInfo> signal_list;
 			ClassDB::get_signal_list(name, &signal_list, true);
@@ -591,7 +632,7 @@ void DocTools::generate(bool p_basic_types) {
 					tid.name = E;
 					tid.type = "Color";
 					tid.data_type = "color";
-					tid.default_value = Variant(ThemeDB::get_singleton()->get_default_theme()->get_color(E, cname)).get_construct_string().replace("\n", " ");
+					tid.default_value = DocData::get_default_value_string(ThemeDB::get_singleton()->get_default_theme()->get_color(E, cname));
 					c.theme_properties.push_back(tid);
 				}
 
@@ -687,7 +728,6 @@ void DocTools::generate(bool p_basic_types) {
 
 		List<MethodInfo> method_list;
 		v.get_method_list(&method_list);
-		method_list.sort();
 		Variant::get_constructor_list(Variant::Type(i), &method_list);
 
 		for (int j = 0; j < Variant::OP_AND; j++) { // Showing above 'and' is pretty confusing and there are a lot of variations.
@@ -701,7 +741,7 @@ void DocTools::generate(bool p_basic_types) {
 				if (rt != Variant::NIL) { // Has operator.
 					// Skip String % operator as it's registered separately for each Variant arg type,
 					// we'll add it manually below.
-					if (i == Variant::STRING && Variant::Operator(j) == Variant::OP_MODULE) {
+					if ((i == Variant::STRING || i == Variant::STRING_NAME) && Variant::Operator(j) == Variant::OP_MODULE) {
 						continue;
 					}
 					MethodInfo mi;
@@ -718,7 +758,7 @@ void DocTools::generate(bool p_basic_types) {
 			}
 		}
 
-		if (i == Variant::STRING) {
+		if (i == Variant::STRING || i == Variant::STRING_NAME) {
 			// We skipped % operator above, and we register it manually once for Variant arg type here.
 			MethodInfo mi;
 			mi.name = "operator %";
@@ -750,6 +790,7 @@ void DocTools::generate(bool p_basic_types) {
 			MethodInfo mi;
 			mi.name = "operator []";
 			mi.return_val.type = Variant::get_indexed_element_type(Variant::Type(i));
+			mi.return_val.usage = Variant::get_indexed_element_usage(Variant::Type(i));
 			PropertyInfo arg;
 			arg.name = "index";
 			arg.type = Variant::INT;
@@ -771,8 +812,7 @@ void DocTools::generate(bool p_basic_types) {
 
 				int darg_idx = mi.default_arguments.size() - mi.arguments.size() + j;
 				if (darg_idx >= 0) {
-					Variant default_arg = mi.default_arguments[darg_idx];
-					ad.default_value = default_arg.get_construct_string().replace("\n", " ");
+					ad.default_value = DocData::get_default_value_string(mi.default_arguments[darg_idx]);
 				}
 
 				method.arguments.push_back(ad);
@@ -810,13 +850,15 @@ void DocTools::generate(bool p_basic_types) {
 			}
 		}
 
+		c.methods.sort();
+
 		List<PropertyInfo> properties;
 		v.get_property_list(&properties);
 		for (const PropertyInfo &pi : properties) {
 			DocData::PropertyDoc property;
 			property.name = pi.name;
 			property.type = Variant::get_type_name(pi.type);
-			property.default_value = v.get(pi.name).get_construct_string().replace("\n", " ");
+			property.default_value = DocData::get_default_value_string(v.get(pi.name));
 
 			c.properties.push_back(property);
 		}
@@ -845,6 +887,7 @@ void DocTools::generate(bool p_basic_types) {
 		for (int i = 0; i < CoreConstants::get_global_constant_count(); i++) {
 			DocData::ConstantDoc cd;
 			cd.name = CoreConstants::get_global_constant_name(i);
+			cd.is_bitfield = CoreConstants::is_global_constant_bitfield(i);
 			if (!CoreConstants::get_ignore_value_in_docs(i)) {
 				cd.value = itos(CoreConstants::get_global_constant_value(i));
 				cd.is_value_valid = true;
@@ -946,8 +989,7 @@ void DocTools::generate(bool p_basic_types) {
 
 					int darg_idx = j - (mi.arguments.size() - mi.default_arguments.size());
 					if (darg_idx >= 0) {
-						Variant default_arg = mi.default_arguments[darg_idx];
-						ad.default_value = default_arg.get_construct_string().replace("\n", " ");
+						ad.default_value = DocData::get_default_value_string(mi.default_arguments[darg_idx]);
 					}
 
 					md.arguments.push_back(ad);
@@ -991,8 +1033,7 @@ void DocTools::generate(bool p_basic_types) {
 
 					int darg_idx = j - (ai.arguments.size() - ai.default_arguments.size());
 					if (darg_idx >= 0) {
-						Variant default_arg = ai.default_arguments[darg_idx];
-						ad.default_value = default_arg.get_construct_string().replace("\n", " ");
+						ad.default_value = DocData::get_default_value_string(ai.default_arguments[darg_idx]);
 					}
 
 					atd.arguments.push_back(ad);
@@ -1020,15 +1061,15 @@ static Error _parse_methods(Ref<XMLParser> &parser, Vector<DocData::MethodDoc> &
 			if (parser->get_node_name() == element) {
 				DocData::MethodDoc method;
 				ERR_FAIL_COND_V(!parser->has_attribute("name"), ERR_FILE_CORRUPT);
-				method.name = parser->get_attribute_value("name");
+				method.name = parser->get_named_attribute_value("name");
 				if (parser->has_attribute("qualifiers")) {
-					method.qualifiers = parser->get_attribute_value("qualifiers");
+					method.qualifiers = parser->get_named_attribute_value("qualifiers");
 				}
 				if (parser->has_attribute("is_deprecated")) {
-					method.is_deprecated = parser->get_attribute_value("is_deprecated").to_lower() == "true";
+					method.is_deprecated = parser->get_named_attribute_value("is_deprecated").to_lower() == "true";
 				}
 				if (parser->has_attribute("is_experimental")) {
-					method.is_experimental = parser->get_attribute_value("is_experimental").to_lower() == "true";
+					method.is_experimental = parser->get_named_attribute_value("is_experimental").to_lower() == "true";
 				}
 
 				while (parser->read() == OK) {
@@ -1036,21 +1077,27 @@ static Error _parse_methods(Ref<XMLParser> &parser, Vector<DocData::MethodDoc> &
 						String name = parser->get_node_name();
 						if (name == "return") {
 							ERR_FAIL_COND_V(!parser->has_attribute("type"), ERR_FILE_CORRUPT);
-							method.return_type = parser->get_attribute_value("type");
+							method.return_type = parser->get_named_attribute_value("type");
 							if (parser->has_attribute("enum")) {
-								method.return_enum = parser->get_attribute_value("enum");
+								method.return_enum = parser->get_named_attribute_value("enum");
+								if (parser->has_attribute("is_bitfield")) {
+									method.return_is_bitfield = parser->get_named_attribute_value("is_bitfield").to_lower() == "true";
+								}
 							}
 						} else if (name == "returns_error") {
 							ERR_FAIL_COND_V(!parser->has_attribute("number"), ERR_FILE_CORRUPT);
-							method.errors_returned.push_back(parser->get_attribute_value("number").to_int());
+							method.errors_returned.push_back(parser->get_named_attribute_value("number").to_int());
 						} else if (name == "param") {
 							DocData::ArgumentDoc argument;
 							ERR_FAIL_COND_V(!parser->has_attribute("name"), ERR_FILE_CORRUPT);
-							argument.name = parser->get_attribute_value("name");
+							argument.name = parser->get_named_attribute_value("name");
 							ERR_FAIL_COND_V(!parser->has_attribute("type"), ERR_FILE_CORRUPT);
-							argument.type = parser->get_attribute_value("type");
+							argument.type = parser->get_named_attribute_value("type");
 							if (parser->has_attribute("enum")) {
-								argument.enumeration = parser->get_attribute_value("enum");
+								argument.enumeration = parser->get_named_attribute_value("enum");
+								if (parser->has_attribute("is_bitfield")) {
+									argument.is_bitfield = parser->get_named_attribute_value("is_bitfield").to_lower() == "true";
+								}
 							}
 
 							method.arguments.push_back(argument);
@@ -1152,21 +1199,21 @@ Error DocTools::_load(Ref<XMLParser> parser) {
 		ERR_FAIL_COND_V(parser->get_node_name() != "class", ERR_FILE_CORRUPT);
 
 		ERR_FAIL_COND_V(!parser->has_attribute("name"), ERR_FILE_CORRUPT);
-		String name = parser->get_attribute_value("name");
+		String name = parser->get_named_attribute_value("name");
 		class_list[name] = DocData::ClassDoc();
 		DocData::ClassDoc &c = class_list[name];
 
 		c.name = name;
 		if (parser->has_attribute("inherits")) {
-			c.inherits = parser->get_attribute_value("inherits");
+			c.inherits = parser->get_named_attribute_value("inherits");
 		}
 
 		if (parser->has_attribute("is_deprecated")) {
-			c.is_deprecated = parser->get_attribute_value("is_deprecated").to_lower() == "true";
+			c.is_deprecated = parser->get_named_attribute_value("is_deprecated").to_lower() == "true";
 		}
 
 		if (parser->has_attribute("is_experimental")) {
-			c.is_experimental = parser->get_attribute_value("is_experimental").to_lower() == "true";
+			c.is_experimental = parser->get_named_attribute_value("is_experimental").to_lower() == "true";
 		}
 
 		while (parser->read() == OK) {
@@ -1192,7 +1239,7 @@ Error DocTools::_load(Ref<XMLParser> parser) {
 							if (name3 == "link") {
 								DocData::TutorialDoc tutorial;
 								if (parser->has_attribute("title")) {
-									tutorial.title = parser->get_attribute_value("title");
+									tutorial.title = parser->get_named_attribute_value("title");
 								}
 								parser->read();
 								if (parser->get_node_type() == XMLParser::NODE_TEXT) {
@@ -1230,23 +1277,26 @@ Error DocTools::_load(Ref<XMLParser> parser) {
 								DocData::PropertyDoc prop2;
 
 								ERR_FAIL_COND_V(!parser->has_attribute("name"), ERR_FILE_CORRUPT);
-								prop2.name = parser->get_attribute_value("name");
+								prop2.name = parser->get_named_attribute_value("name");
 								ERR_FAIL_COND_V(!parser->has_attribute("type"), ERR_FILE_CORRUPT);
-								prop2.type = parser->get_attribute_value("type");
+								prop2.type = parser->get_named_attribute_value("type");
 								if (parser->has_attribute("setter")) {
-									prop2.setter = parser->get_attribute_value("setter");
+									prop2.setter = parser->get_named_attribute_value("setter");
 								}
 								if (parser->has_attribute("getter")) {
-									prop2.getter = parser->get_attribute_value("getter");
+									prop2.getter = parser->get_named_attribute_value("getter");
 								}
 								if (parser->has_attribute("enum")) {
-									prop2.enumeration = parser->get_attribute_value("enum");
+									prop2.enumeration = parser->get_named_attribute_value("enum");
+									if (parser->has_attribute("is_bitfield")) {
+										prop2.is_bitfield = parser->get_named_attribute_value("is_bitfield").to_lower() == "true";
+									}
 								}
 								if (parser->has_attribute("is_deprecated")) {
-									prop2.is_deprecated = parser->get_attribute_value("is_deprecated").to_lower() == "true";
+									prop2.is_deprecated = parser->get_named_attribute_value("is_deprecated").to_lower() == "true";
 								}
 								if (parser->has_attribute("is_experimental")) {
-									prop2.is_experimental = parser->get_attribute_value("is_experimental").to_lower() == "true";
+									prop2.is_experimental = parser->get_named_attribute_value("is_experimental").to_lower() == "true";
 								}
 								if (!parser->is_empty()) {
 									parser->read();
@@ -1273,11 +1323,11 @@ Error DocTools::_load(Ref<XMLParser> parser) {
 								DocData::ThemeItemDoc prop2;
 
 								ERR_FAIL_COND_V(!parser->has_attribute("name"), ERR_FILE_CORRUPT);
-								prop2.name = parser->get_attribute_value("name");
+								prop2.name = parser->get_named_attribute_value("name");
 								ERR_FAIL_COND_V(!parser->has_attribute("type"), ERR_FILE_CORRUPT);
-								prop2.type = parser->get_attribute_value("type");
+								prop2.type = parser->get_named_attribute_value("type");
 								ERR_FAIL_COND_V(!parser->has_attribute("data_type"), ERR_FILE_CORRUPT);
-								prop2.data_type = parser->get_attribute_value("data_type");
+								prop2.data_type = parser->get_named_attribute_value("data_type");
 								if (!parser->is_empty()) {
 									parser->read();
 									if (parser->get_node_type() == XMLParser::NODE_TEXT) {
@@ -1302,21 +1352,21 @@ Error DocTools::_load(Ref<XMLParser> parser) {
 							if (name3 == "constant") {
 								DocData::ConstantDoc constant2;
 								ERR_FAIL_COND_V(!parser->has_attribute("name"), ERR_FILE_CORRUPT);
-								constant2.name = parser->get_attribute_value("name");
+								constant2.name = parser->get_named_attribute_value("name");
 								ERR_FAIL_COND_V(!parser->has_attribute("value"), ERR_FILE_CORRUPT);
-								constant2.value = parser->get_attribute_value("value");
+								constant2.value = parser->get_named_attribute_value("value");
 								constant2.is_value_valid = true;
 								if (parser->has_attribute("enum")) {
-									constant2.enumeration = parser->get_attribute_value("enum");
-								}
-								if (parser->has_attribute("is_bitfield")) {
-									constant2.is_bitfield = parser->get_attribute_value("is_bitfield").to_lower() == "true";
+									constant2.enumeration = parser->get_named_attribute_value("enum");
+									if (parser->has_attribute("is_bitfield")) {
+										constant2.is_bitfield = parser->get_named_attribute_value("is_bitfield").to_lower() == "true";
+									}
 								}
 								if (parser->has_attribute("is_deprecated")) {
-									constant2.is_deprecated = parser->get_attribute_value("is_deprecated").to_lower() == "true";
+									constant2.is_deprecated = parser->get_named_attribute_value("is_deprecated").to_lower() == "true";
 								}
 								if (parser->has_attribute("is_experimental")) {
-									constant2.is_experimental = parser->get_attribute_value("is_experimental").to_lower() == "true";
+									constant2.is_experimental = parser->get_named_attribute_value("is_experimental").to_lower() == "true";
 								}
 								if (!parser->is_empty()) {
 									parser->read();
@@ -1351,10 +1401,7 @@ static void _write_string(Ref<FileAccess> f, int p_tablevel, const String &p_str
 	if (p_string.is_empty()) {
 		return;
 	}
-	String tab;
-	for (int i = 0; i < p_tablevel; i++) {
-		tab += "\t";
-	}
+	String tab = String("\t").repeat(p_tablevel);
 	f->store_string(tab + p_string + "\n");
 }
 
@@ -1384,8 +1431,11 @@ static void _write_method_doc(Ref<FileAccess> f, const String &p_name, Vector<Do
 				String enum_text;
 				if (!m.return_enum.is_empty()) {
 					enum_text = " enum=\"" + m.return_enum + "\"";
+					if (m.return_is_bitfield) {
+						enum_text += " is_bitfield=\"true\"";
+					}
 				}
-				_write_string(f, 3, "<return type=\"" + m.return_type + "\"" + enum_text + " />");
+				_write_string(f, 3, "<return type=\"" + m.return_type.xml_escape(true) + "\"" + enum_text + " />");
 			}
 			if (m.errors_returned.size() > 0) {
 				for (int j = 0; j < m.errors_returned.size(); j++) {
@@ -1399,12 +1449,15 @@ static void _write_method_doc(Ref<FileAccess> f, const String &p_name, Vector<Do
 				String enum_text;
 				if (!a.enumeration.is_empty()) {
 					enum_text = " enum=\"" + a.enumeration + "\"";
+					if (a.is_bitfield) {
+						enum_text += " is_bitfield=\"true\"";
+					}
 				}
 
 				if (!a.default_value.is_empty()) {
-					_write_string(f, 3, "<param index=\"" + itos(j) + "\" name=\"" + a.name.xml_escape() + "\" type=\"" + a.type.xml_escape() + "\"" + enum_text + " default=\"" + a.default_value.xml_escape(true) + "\" />");
+					_write_string(f, 3, "<param index=\"" + itos(j) + "\" name=\"" + a.name.xml_escape() + "\" type=\"" + a.type.xml_escape(true) + "\"" + enum_text + " default=\"" + a.default_value.xml_escape(true) + "\" />");
 				} else {
-					_write_string(f, 3, "<param index=\"" + itos(j) + "\" name=\"" + a.name.xml_escape() + "\" type=\"" + a.type.xml_escape() + "\"" + enum_text + " />");
+					_write_string(f, 3, "<param index=\"" + itos(j) + "\" name=\"" + a.name.xml_escape() + "\" type=\"" + a.type.xml_escape(true) + "\"" + enum_text + " />");
 				}
 			}
 
@@ -1419,7 +1472,7 @@ static void _write_method_doc(Ref<FileAccess> f, const String &p_name, Vector<Do
 	}
 }
 
-Error DocTools::save_classes(const String &p_default_path, const HashMap<String, String> &p_class_path) {
+Error DocTools::save_classes(const String &p_default_path, const HashMap<String, String> &p_class_path, bool p_include_xml_schema) {
 	for (KeyValue<String, DocData::ClassDoc> &E : class_list) {
 		DocData::ClassDoc &c = E.value;
 
@@ -1431,16 +1484,16 @@ Error DocTools::save_classes(const String &p_default_path, const HashMap<String,
 		}
 
 		Error err;
-		String save_file = save_path.path_join(c.name + ".xml");
+		String save_file = save_path.path_join(c.name.replace("\"", "").replace("/", "--") + ".xml");
 		Ref<FileAccess> f = FileAccess::open(save_file, FileAccess::WRITE, &err);
 
 		ERR_CONTINUE_MSG(err != OK, "Can't write doc file: " + save_file + ".");
 
 		_write_string(f, 0, "<?xml version=\"1.0\" encoding=\"UTF-8\" ?>");
 
-		String header = "<class name=\"" + c.name + "\"";
+		String header = "<class name=\"" + c.name.xml_escape(true) + "\"";
 		if (!c.inherits.is_empty()) {
-			header += " inherits=\"" + c.inherits + "\"";
+			header += " inherits=\"" + c.inherits.xml_escape(true) + "\"";
 			if (c.is_deprecated) {
 				header += " is_deprecated=\"true\"";
 			}
@@ -1448,13 +1501,15 @@ Error DocTools::save_classes(const String &p_default_path, const HashMap<String,
 				header += " is_experimental=\"true\"";
 			}
 		}
-		header += String(" version=\"") + VERSION_BRANCH + "\"";
-		// Reference the XML schema so editors can provide error checking.
-		// Modules are nested deep, so change the path to reference the same schema everywhere.
-		const String schema_path = save_path.find("modules/") != -1 ? "../../../doc/class.xsd" : "../class.xsd";
-		header += vformat(
-				R"( xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="%s">)",
-				schema_path);
+		if (p_include_xml_schema) {
+			// Reference the XML schema so editors can provide error checking.
+			// Modules are nested deep, so change the path to reference the same schema everywhere.
+			const String schema_path = save_path.find("modules/") != -1 ? "../../../doc/class.xsd" : "../class.xsd";
+			header += vformat(
+					R"( xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="%s")",
+					schema_path);
+		}
+		header += ">";
 		_write_string(f, 0, header);
 
 		_write_string(f, 1, "<brief_description>");
@@ -1486,6 +1541,9 @@ Error DocTools::save_classes(const String &p_default_path, const HashMap<String,
 				String additional_attributes;
 				if (!c.properties[i].enumeration.is_empty()) {
 					additional_attributes += " enum=\"" + c.properties[i].enumeration + "\"";
+					if (c.properties[i].is_bitfield) {
+						additional_attributes += " is_bitfield=\"true\"";
+					}
 				}
 				if (!c.properties[i].default_value.is_empty()) {
 					additional_attributes += " default=\"" + c.properties[i].default_value.xml_escape(true) + "\"";
@@ -1500,9 +1558,9 @@ Error DocTools::save_classes(const String &p_default_path, const HashMap<String,
 				const DocData::PropertyDoc &p = c.properties[i];
 
 				if (c.properties[i].overridden) {
-					_write_string(f, 2, "<member name=\"" + p.name + "\" type=\"" + p.type + "\" setter=\"" + p.setter + "\" getter=\"" + p.getter + "\" overrides=\"" + p.overrides + "\"" + additional_attributes + " />");
+					_write_string(f, 2, "<member name=\"" + p.name + "\" type=\"" + p.type.xml_escape(true) + "\" setter=\"" + p.setter + "\" getter=\"" + p.getter + "\" overrides=\"" + p.overrides + "\"" + additional_attributes + " />");
 				} else {
-					_write_string(f, 2, "<member name=\"" + p.name + "\" type=\"" + p.type + "\" setter=\"" + p.setter + "\" getter=\"" + p.getter + "\"" + additional_attributes + ">");
+					_write_string(f, 2, "<member name=\"" + p.name + "\" type=\"" + p.type.xml_escape(true) + "\" setter=\"" + p.setter + "\" getter=\"" + p.getter + "\"" + additional_attributes + ">");
 					_write_string(f, 3, _translate_doc_string(p.description).strip_edges().xml_escape());
 					_write_string(f, 2, "</member>");
 				}
@@ -1528,12 +1586,12 @@ Error DocTools::save_classes(const String &p_default_path, const HashMap<String,
 				if (k.is_value_valid) {
 					if (!k.enumeration.is_empty()) {
 						if (k.is_bitfield) {
-							_write_string(f, 2, "<constant name=\"" + k.name + "\" value=\"" + k.value + "\" enum=\"" + k.enumeration + "\" is_bitfield=\"true\"" + additional_attributes + ">");
+							_write_string(f, 2, "<constant name=\"" + k.name + "\" value=\"" + k.value.xml_escape(true) + "\" enum=\"" + k.enumeration + "\" is_bitfield=\"true\"" + additional_attributes + ">");
 						} else {
-							_write_string(f, 2, "<constant name=\"" + k.name + "\" value=\"" + k.value + "\" enum=\"" + k.enumeration + "\"" + additional_attributes + ">");
+							_write_string(f, 2, "<constant name=\"" + k.name + "\" value=\"" + k.value.xml_escape(true) + "\" enum=\"" + k.enumeration + "\"" + additional_attributes + ">");
 						}
 					} else {
-						_write_string(f, 2, "<constant name=\"" + k.name + "\" value=\"" + k.value + "\"" + additional_attributes + ">");
+						_write_string(f, 2, "<constant name=\"" + k.name + "\" value=\"" + k.value.xml_escape(true) + "\"" + additional_attributes + ">");
 					}
 				} else {
 					if (!k.enumeration.is_empty()) {

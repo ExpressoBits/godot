@@ -1,37 +1,39 @@
-/*************************************************************************/
-/*  audio_stream_import_settings.cpp                                     */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  audio_stream_import_settings.cpp                                      */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "audio_stream_import_settings.h"
 #include "editor/audio_stream_preview.h"
 #include "editor/editor_file_system.h"
 #include "editor/editor_scale.h"
+#include "editor/editor_string_names.h"
+#include "scene/gui/check_box.h"
 
 AudioStreamImportSettings *AudioStreamImportSettings::singleton = nullptr;
 
@@ -44,18 +46,18 @@ void AudioStreamImportSettings::_notification(int p_what) {
 
 		case NOTIFICATION_THEME_CHANGED:
 		case NOTIFICATION_ENTER_TREE: {
-			_play_button->set_icon(get_theme_icon(SNAME("MainPlay"), SNAME("EditorIcons")));
-			_stop_button->set_icon(get_theme_icon(SNAME("Stop"), SNAME("EditorIcons")));
-			_preview->set_color(get_theme_color(SNAME("dark_color_2"), SNAME("Editor")));
-			color_rect->set_color(get_theme_color(SNAME("dark_color_1"), SNAME("Editor")));
-			_current_label->add_theme_font_override("font", get_theme_font(SNAME("status_source"), SNAME("EditorFonts")));
-			_current_label->add_theme_font_size_override("font_size", get_theme_font_size(SNAME("status_source_size"), SNAME("EditorFonts")));
-			_duration_label->add_theme_font_override("font", get_theme_font(SNAME("status_source"), SNAME("EditorFonts")));
-			_duration_label->add_theme_font_size_override("font_size", get_theme_font_size(SNAME("status_source_size"), SNAME("EditorFonts")));
+			_play_button->set_icon(get_editor_theme_icon(SNAME("MainPlay")));
+			_stop_button->set_icon(get_editor_theme_icon(SNAME("Stop")));
+			_preview->set_color(get_theme_color(SNAME("dark_color_2"), EditorStringName(Editor)));
+			color_rect->set_color(get_theme_color(SNAME("dark_color_1"), EditorStringName(Editor)));
+			_current_label->add_theme_font_override("font", get_theme_font(SNAME("status_source"), EditorStringName(EditorFonts)));
+			_current_label->add_theme_font_size_override("font_size", get_theme_font_size(SNAME("status_source_size"), EditorStringName(EditorFonts)));
+			_duration_label->add_theme_font_override("font", get_theme_font(SNAME("status_source"), EditorStringName(EditorFonts)));
+			_duration_label->add_theme_font_size_override("font_size", get_theme_font_size(SNAME("status_source_size"), EditorStringName(EditorFonts)));
 
-			zoom_in->set_icon(get_theme_icon(SNAME("ZoomMore"), SNAME("EditorIcons")));
-			zoom_out->set_icon(get_theme_icon(SNAME("ZoomLess"), SNAME("EditorIcons")));
-			zoom_reset->set_icon(get_theme_icon(SNAME("ZoomReset"), SNAME("EditorIcons")));
+			zoom_in->set_icon(get_editor_theme_icon(SNAME("ZoomMore")));
+			zoom_out->set_icon(get_editor_theme_icon(SNAME("ZoomLess")));
+			zoom_reset->set_icon(get_editor_theme_icon(SNAME("ZoomReset")));
 
 			_indicator->queue_redraw();
 			_preview->queue_redraw();
@@ -76,21 +78,22 @@ void AudioStreamImportSettings::_notification(int p_what) {
 
 void AudioStreamImportSettings::_draw_preview() {
 	Rect2 rect = _preview->get_rect();
-	Size2 size = rect.size;
+	Size2 rect_size = rect.size;
+	int width = rect_size.width;
 
 	Ref<AudioStreamPreview> preview = AudioStreamPreviewGenerator::get_singleton()->generate_preview(stream);
 	float preview_offset = zoom_bar->get_value();
 	float preview_len = zoom_bar->get_page();
 
-	Ref<Font> beat_font = get_theme_font(SNAME("main"), SNAME("EditorFonts"));
-	int main_size = get_theme_font_size(SNAME("main_size"), SNAME("EditorFonts"));
-	Vector<Vector2> lines;
-	lines.resize(size.width * 2);
-	Color color_active = get_theme_color(SNAME("contrast_color_2"), SNAME("Editor"));
+	Ref<Font> beat_font = get_theme_font(SNAME("main"), EditorStringName(EditorFonts));
+	int main_size = get_theme_font_size(SNAME("main_size"), EditorStringName(EditorFonts));
+	Vector<Vector2> points;
+	points.resize(width * 2);
+	Color color_active = get_theme_color(SNAME("contrast_color_2"), EditorStringName(Editor));
 	Color color_inactive = color_active;
 	color_inactive.a *= 0.5;
-	Vector<Color> color;
-	color.resize(lines.size());
+	Vector<Color> colors;
+	colors.resize(width);
 
 	float inactive_from = 1e20;
 	float beat_size = 0;
@@ -107,23 +110,22 @@ void AudioStreamImportSettings::_draw_preview() {
 		}
 	}
 
-	for (int i = 0; i < size.width; i++) {
-		float ofs = preview_offset + i * preview_len / size.width;
-		float ofs_n = preview_offset + (i + 1) * preview_len / size.width;
+	for (int i = 0; i < width; i++) {
+		float ofs = preview_offset + i * preview_len / rect_size.width;
+		float ofs_n = preview_offset + (i + 1) * preview_len / rect_size.width;
 		float max = preview->get_max(ofs, ofs_n) * 0.5 + 0.5;
 		float min = preview->get_min(ofs, ofs_n) * 0.5 + 0.5;
 
 		int idx = i;
-		lines.write[idx * 2 + 0] = Vector2(i + 1, rect.position.y + min * rect.size.y);
-		lines.write[idx * 2 + 1] = Vector2(i + 1, rect.position.y + max * rect.size.y);
+		points.write[idx * 2 + 0] = Vector2(i + 1, rect.position.y + min * rect.size.y);
+		points.write[idx * 2 + 1] = Vector2(i + 1, rect.position.y + max * rect.size.y);
 
-		Color c = ofs > inactive_from ? color_inactive : color_active;
-
-		color.write[idx * 2 + 0] = c;
-		color.write[idx * 2 + 1] = c;
+		colors.write[idx] = ofs > inactive_from ? color_inactive : color_active;
 	}
 
-	RS::get_singleton()->canvas_item_add_multiline(_preview->get_canvas_item(), lines, color);
+	if (!points.is_empty()) {
+		RS::get_singleton()->canvas_item_add_multiline(_preview->get_canvas_item(), points, colors);
+	}
 
 	if (beat_size) {
 		Color beat_color = Color(1, 1, 1, 1);
@@ -139,8 +141,8 @@ void AudioStreamImportSettings::_draw_preview() {
 		int bar_beats = stream->get_bar_beats();
 
 		int last_text_end_x = 0;
-		for (int i = 0; i < size.width; i++) {
-			float ofs = preview_offset + i * preview_len / size.width;
+		for (int i = 0; i < width; i++) {
+			float ofs = preview_offset + i * preview_len / rect_size.width;
 			int beat = int(ofs / beat_size);
 			if (beat != prev_beat) {
 				String text = itos(beat);
@@ -225,25 +227,25 @@ void AudioStreamImportSettings::_play() {
 		// '_pausing' variable indicates that we want to pause the audio player, not stop it. See '_on_finished()'.
 		_pausing = true;
 		_player->stop();
-		_play_button->set_icon(get_theme_icon(SNAME("MainPlay"), SNAME("EditorIcons")));
+		_play_button->set_icon(get_editor_theme_icon(SNAME("MainPlay")));
 		set_process(false);
 	} else {
 		_player->play(_current);
-		_play_button->set_icon(get_theme_icon(SNAME("Pause"), SNAME("EditorIcons")));
+		_play_button->set_icon(get_editor_theme_icon(SNAME("Pause")));
 		set_process(true);
 	}
 }
 
 void AudioStreamImportSettings::_stop() {
 	_player->stop();
-	_play_button->set_icon(get_theme_icon(SNAME("MainPlay"), SNAME("EditorIcons")));
+	_play_button->set_icon(get_editor_theme_icon(SNAME("MainPlay")));
 	_current = 0;
 	_indicator->queue_redraw();
 	set_process(false);
 }
 
 void AudioStreamImportSettings::_on_finished() {
-	_play_button->set_icon(get_theme_icon(SNAME("MainPlay"), SNAME("EditorIcons")));
+	_play_button->set_icon(get_editor_theme_icon(SNAME("MainPlay")));
 	if (!_pausing) {
 		_current = 0;
 		_indicator->queue_redraw();
@@ -260,8 +262,8 @@ void AudioStreamImportSettings::_draw_indicator() {
 
 	Rect2 rect = _preview->get_rect();
 
-	Ref<Font> beat_font = get_theme_font(SNAME("main"), SNAME("EditorFonts"));
-	int main_size = get_theme_font_size(SNAME("main_size"), SNAME("EditorFonts"));
+	Ref<Font> beat_font = get_theme_font(SNAME("main"), EditorStringName(EditorFonts));
+	int main_size = get_theme_font_size(SNAME("main_size"), EditorStringName(EditorFonts));
 
 	if (stream->get_bpm() > 0) {
 		int y_ofs = beat_font->get_height(main_size) + 4 * EDSCALE;
@@ -274,11 +276,11 @@ void AudioStreamImportSettings::_draw_indicator() {
 		return;
 	}
 
-	const Color color = get_theme_color(SNAME("accent_color"), SNAME("Editor"));
+	const Color color = get_theme_color(SNAME("accent_color"), EditorStringName(Editor));
 	_indicator->draw_line(Point2(ofs_x, rect.position.y), Point2(ofs_x, rect.position.y + rect.size.height), color, Math::round(2 * EDSCALE));
 	_indicator->draw_texture(
-			get_theme_icon(SNAME("TimelineIndicator"), SNAME("EditorIcons")),
-			Point2(ofs_x - get_theme_icon(SNAME("TimelineIndicator"), SNAME("EditorIcons"))->get_width() * 0.5, rect.position.y),
+			get_editor_theme_icon(SNAME("TimelineIndicator")),
+			Point2(ofs_x - get_editor_theme_icon(SNAME("TimelineIndicator"))->get_width() * 0.5, rect.position.y),
 			color);
 
 	if (stream->get_bpm() > 0 && _hovering_beat != -1) {
@@ -287,17 +289,15 @@ void AudioStreamImportSettings::_draw_indicator() {
 		float preview_len = zoom_bar->get_page();
 		float beat_size = 60 / float(stream->get_bpm());
 		int prev_beat = 0;
-		int last_text_end_x = 0;
 		for (int i = 0; i < rect.size.width; i++) {
 			float ofs = preview_offset + i * preview_len / rect.size.width;
 			int beat = int(ofs / beat_size);
 			if (beat != prev_beat) {
 				String text = itos(beat);
 				int text_w = beat_font->get_string_size(text).width;
-				if (i - text_w / 2 > last_text_end_x + 2 * EDSCALE && beat == _hovering_beat) {
+				if (i - text_w / 2 > 2 * EDSCALE && beat == _hovering_beat) {
 					int x_ofs = i - text_w / 2;
 					_indicator->draw_string(beat_font, Point2(x_ofs, 2 * EDSCALE + beat_font->get_ascent(main_size)), text, HORIZONTAL_ALIGNMENT_LEFT, rect.size.width - x_ofs, Font::DEFAULT_FONT_SIZE, color);
-					last_text_end_x = i + text_w / 2;
 					break;
 				}
 				prev_beat = beat;
@@ -317,8 +317,8 @@ void AudioStreamImportSettings::_on_input_indicator(Ref<InputEvent> p_event) {
 	const Ref<InputEventMouseButton> mb = p_event;
 	if (mb.is_valid() && mb->get_button_index() == MouseButton::LEFT) {
 		if (stream->get_bpm() > 0) {
-			int main_size = get_theme_font_size(SNAME("main_size"), SNAME("EditorFonts"));
-			Ref<Font> beat_font = get_theme_font(SNAME("main"), SNAME("EditorFonts"));
+			int main_size = get_theme_font_size(SNAME("main_size"), EditorStringName(EditorFonts));
+			Ref<Font> beat_font = get_theme_font(SNAME("main"), EditorStringName(EditorFonts));
 			int y_ofs = beat_font->get_height(main_size) + 4 * EDSCALE;
 			if ((!_dragging && mb->get_position().y < y_ofs) || _beat_len_dragging) {
 				if (mb->is_pressed()) {
@@ -346,8 +346,8 @@ void AudioStreamImportSettings::_on_input_indicator(Ref<InputEvent> p_event) {
 			_set_beat_len_to(mm->get_position().x);
 		}
 		if (stream->get_bpm() > 0) {
-			int main_size = get_theme_font_size(SNAME("main_size"), SNAME("EditorFonts"));
-			Ref<Font> beat_font = get_theme_font(SNAME("main"), SNAME("EditorFonts"));
+			int main_size = get_theme_font_size(SNAME("main_size"), EditorStringName(EditorFonts));
+			Ref<Font> beat_font = get_theme_font(SNAME("main"), EditorStringName(EditorFonts));
 			int y_ofs = beat_font->get_height(main_size) + 4 * EDSCALE;
 			if (mm->get_position().y < y_ofs) {
 				int new_hovering_beat = _get_beat_at_pos(mm->get_position().x);
@@ -396,7 +396,7 @@ void AudioStreamImportSettings::_seek_to(real_t p_x) {
 
 void AudioStreamImportSettings::edit(const String &p_path, const String &p_importer, const Ref<AudioStream> &p_stream) {
 	if (!stream.is_null()) {
-		stream->disconnect("changed", callable_mp(this, &AudioStreamImportSettings::_audio_changed));
+		stream->disconnect_changed(callable_mp(this, &AudioStreamImportSettings::_audio_changed));
 	}
 
 	importer = p_importer;
@@ -409,7 +409,7 @@ void AudioStreamImportSettings::edit(const String &p_path, const String &p_impor
 	_duration_label->set_text(text);
 
 	if (!stream.is_null()) {
-		stream->connect("changed", callable_mp(this, &AudioStreamImportSettings::_audio_changed));
+		stream->connect_changed(callable_mp(this, &AudioStreamImportSettings::_audio_changed));
 		_preview->queue_redraw();
 		_indicator->queue_redraw();
 		color_rect->queue_redraw();
@@ -466,12 +466,17 @@ void AudioStreamImportSettings::_settings_changed() {
 	updating_settings = true;
 	stream->call("set_loop", loop->is_pressed());
 	stream->call("set_loop_offset", loop_offset->get_value());
+	if (loop->is_pressed()) {
+		loop_offset->set_editable(true);
+	} else {
+		loop_offset->set_editable(false);
+	}
+
 	if (bpm_enabled->is_pressed()) {
 		stream->call("set_bpm", bpm_edit->get_value());
-		beats_enabled->show();
-		beats_edit->show();
-		bar_beats_label->show();
-		bar_beats_edit->show();
+		beats_enabled->set_disabled(false);
+		beats_edit->set_editable(true);
+		bar_beats_edit->set_editable(true);
 		double bpm = bpm_edit->get_value();
 		if (bpm > 0) {
 			float beat_size = 60 / float(bpm);
@@ -487,10 +492,9 @@ void AudioStreamImportSettings::_settings_changed() {
 	} else {
 		stream->call("set_bpm", 0);
 		stream->call("set_bar_beats", 4);
-		beats_enabled->hide();
-		beats_edit->hide();
-		bar_beats_label->hide();
-		bar_beats_edit->hide();
+		beats_enabled->set_disabled(true);
+		beats_edit->set_editable(false);
+		bar_beats_edit->set_editable(false);
 	}
 	if (bpm_enabled->is_pressed() && beats_enabled->is_pressed()) {
 		stream->call("set_beat_count", beats_edit->get_value());
@@ -553,7 +557,16 @@ AudioStreamImportSettings::AudioStreamImportSettings() {
 	bpm_edit->connect("value_changed", callable_mp(this, &AudioStreamImportSettings::_settings_changed).unbind(1));
 	interactive_hb->add_child(bpm_edit);
 	interactive_hb->add_spacer();
-	bar_beats_label = memnew(Label(TTR("Beats/Bar:")));
+	beats_enabled = memnew(CheckBox);
+	beats_enabled->set_text(TTR("Beat Count:"));
+	beats_enabled->connect("toggled", callable_mp(this, &AudioStreamImportSettings::_settings_changed).unbind(1));
+	interactive_hb->add_child(beats_enabled);
+	beats_edit = memnew(SpinBox);
+	beats_edit->set_tooltip_text(TTR("Configure the amount of Beats used for music-aware looping. If zero, it will be autodetected from the length.\nIt is recommended to set this value (either manually or by clicking on a beat number in the preview) to ensure looping works properly."));
+	beats_edit->set_max(99999);
+	beats_edit->connect("value_changed", callable_mp(this, &AudioStreamImportSettings::_settings_changed).unbind(1));
+	interactive_hb->add_child(beats_edit);
+	bar_beats_label = memnew(Label(TTR("Bar Beats:")));
 	interactive_hb->add_child(bar_beats_label);
 	bar_beats_edit = memnew(SpinBox);
 	bar_beats_edit->set_tooltip_text(TTR("Configure the Beats Per Bar. This used for music-aware transitions between AudioStreams."));
@@ -562,15 +575,6 @@ AudioStreamImportSettings::AudioStreamImportSettings() {
 	bar_beats_edit->connect("value_changed", callable_mp(this, &AudioStreamImportSettings::_settings_changed).unbind(1));
 	interactive_hb->add_child(bar_beats_edit);
 	interactive_hb->add_spacer();
-	beats_enabled = memnew(CheckBox);
-	beats_enabled->set_text(TTR("Length (in beats):"));
-	beats_enabled->connect("toggled", callable_mp(this, &AudioStreamImportSettings::_settings_changed).unbind(1));
-	interactive_hb->add_child(beats_enabled);
-	beats_edit = memnew(SpinBox);
-	beats_edit->set_tooltip_text(TTR("Configure the amount of Beats used for music-aware looping. If zero, it will be autodetected from the length.\nIt is recommended to set this value (either manually or by clicking on a beat number in the preview) to ensure looping works properly."));
-	beats_edit->set_max(99999);
-	beats_edit->connect("value_changed", callable_mp(this, &AudioStreamImportSettings::_settings_changed).unbind(1));
-	interactive_hb->add_child(beats_edit);
 	main_vbox->add_margin_child(TTR("Music Playback:"), interactive_hb);
 
 	color_rect = memnew(ColorRect);

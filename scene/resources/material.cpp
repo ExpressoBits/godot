@@ -1,32 +1,32 @@
-/*************************************************************************/
-/*  material.cpp                                                         */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  material.cpp                                                          */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "material.h"
 
@@ -82,6 +82,27 @@ void Material::_validate_property(PropertyInfo &p_property) const {
 	}
 }
 
+void Material::_mark_initialized(const Callable &p_queue_shader_change_callable) {
+	// If this is happening as part of resource loading, it is not safe to queue the update
+	// as an addition to the dirty list, unless the load is happening on the main thread.
+	if (ResourceLoader::is_within_load() && Thread::get_caller_id() != Thread::get_main_id()) {
+		DEV_ASSERT(init_state != INIT_STATE_READY);
+		if (init_state == INIT_STATE_UNINITIALIZED) { // Prevent queueing twice.
+			// Let's mark this material as being initialized.
+			init_state = INIT_STATE_INITIALIZING;
+			// Knowing that the ResourceLoader will eventually feed deferred calls into the main message queue, let's do these:
+			// 1. Queue setting the init state to INIT_STATE_READY finally.
+			callable_mp(this, &Material::_mark_initialized).bind(p_queue_shader_change_callable).call_deferred();
+			// 2. Queue an individual update of this material.
+			p_queue_shader_change_callable.call_deferred();
+		}
+	} else {
+		// Straightforward conditions.
+		init_state = INIT_STATE_READY;
+		p_queue_shader_change_callable.callv(Array());
+	}
+}
+
 void Material::inspect_native_shader_code() {
 	SceneTree *st = Object::cast_to<SceneTree>(OS::get_singleton()->get_main_loop());
 	RID shader = get_shader_rid();
@@ -92,33 +113,31 @@ void Material::inspect_native_shader_code() {
 
 RID Material::get_shader_rid() const {
 	RID ret;
-	if (GDVIRTUAL_REQUIRED_CALL(_get_shader_rid, ret)) {
-		return ret;
-	}
-	return RID();
+	GDVIRTUAL_REQUIRED_CALL(_get_shader_rid, ret);
+	return ret;
 }
 Shader::Mode Material::get_shader_mode() const {
-	Shader::Mode ret;
-	if (GDVIRTUAL_REQUIRED_CALL(_get_shader_mode, ret)) {
-		return ret;
-	}
-
-	return Shader::MODE_MAX;
+	Shader::Mode ret = Shader::MODE_MAX;
+	GDVIRTUAL_REQUIRED_CALL(_get_shader_mode, ret);
+	return ret;
 }
 
 bool Material::_can_do_next_pass() const {
-	bool ret;
-	if (GDVIRTUAL_CALL(_can_do_next_pass, ret)) {
-		return ret;
-	}
-	return false;
+	bool ret = false;
+	GDVIRTUAL_CALL(_can_do_next_pass, ret);
+	return ret;
 }
+
 bool Material::_can_use_render_priority() const {
-	bool ret;
-	if (GDVIRTUAL_CALL(_can_use_render_priority, ret)) {
-		return ret;
-	}
-	return false;
+	bool ret = false;
+	GDVIRTUAL_CALL(_can_use_render_priority, ret);
+	return ret;
+}
+
+Ref<Resource> Material::create_placeholder() const {
+	Ref<PlaceholderMaterial> placeholder;
+	placeholder.instantiate();
+	return placeholder;
 }
 
 void Material::_bind_methods() {
@@ -130,6 +149,8 @@ void Material::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("inspect_native_shader_code"), &Material::inspect_native_shader_code);
 	ClassDB::set_method_flags(get_class_static(), _scs_create("inspect_native_shader_code"), METHOD_FLAGS_DEFAULT | METHOD_FLAG_EDITOR);
+
+	ClassDB::bind_method(D_METHOD("create_placeholder"), &Material::create_placeholder);
 
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "render_priority", PROPERTY_HINT_RANGE, itos(RENDER_PRIORITY_MIN) + "," + itos(RENDER_PRIORITY_MAX) + ",1"), "set_render_priority", "get_render_priority");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "next_pass", PROPERTY_HINT_RESOURCE_TYPE, "Material"), "set_next_pass", "get_next_pass");
@@ -149,6 +170,7 @@ Material::Material() {
 }
 
 Material::~Material() {
+	ERR_FAIL_NULL(RenderingServer::get_singleton());
 	RenderingServer::get_singleton()->free(material);
 }
 
@@ -156,11 +178,36 @@ Material::~Material() {
 
 bool ShaderMaterial::_set(const StringName &p_name, const Variant &p_value) {
 	if (shader.is_valid()) {
-		StringName pr = shader->remap_parameter(p_name);
-		if (pr) {
-			set_shader_parameter(pr, p_value);
+		const StringName *sn = remap_cache.getptr(p_name);
+		if (sn) {
+			set_shader_parameter(*sn, p_value);
 			return true;
 		}
+		String s = p_name;
+		if (s.begins_with("shader_parameter/")) {
+			String param = s.replace_first("shader_parameter/", "");
+			remap_cache[s] = param;
+			set_shader_parameter(param, p_value);
+			return true;
+		}
+#ifndef DISABLE_DEPRECATED
+		// Compatibility remaps are only needed here.
+		if (s.begins_with("param/")) {
+			s = s.replace_first("param/", "shader_parameter/");
+		} else if (s.begins_with("shader_param/")) {
+			s = s.replace_first("shader_param/", "shader_parameter/");
+		} else if (s.begins_with("shader_uniform/")) {
+			s = s.replace_first("shader_uniform/", "shader_parameter/");
+		} else {
+			return false; // Not a shader parameter.
+		}
+
+		WARN_PRINT("This material (containing shader with path: '" + shader->get_path() + "') uses an old deprecated parameter names. Consider re-saving this resource (or scene which contains it) in order for it to continue working in future versions.");
+		String param = s.replace_first("shader_parameter/", "");
+		remap_cache[s] = param;
+		set_shader_parameter(param, p_value);
+		return true;
+#endif
 	}
 
 	return false;
@@ -168,9 +215,10 @@ bool ShaderMaterial::_set(const StringName &p_name, const Variant &p_value) {
 
 bool ShaderMaterial::_get(const StringName &p_name, Variant &r_ret) const {
 	if (shader.is_valid()) {
-		StringName pr = shader->remap_parameter(p_name);
-		if (pr) {
-			r_ret = get_shader_parameter(pr);
+		const StringName *sn = remap_cache.getptr(p_name);
+		if (sn) {
+			// Only return a parameter if it was previously set.
+			r_ret = get_shader_parameter(*sn);
 			return true;
 		}
 	}
@@ -184,6 +232,7 @@ void ShaderMaterial::_get_property_list(List<PropertyInfo> *p_list) const {
 		shader->get_shader_uniform_list(&list, true);
 
 		HashMap<String, HashMap<String, List<PropertyInfo>>> groups;
+		LocalVector<Pair<String, LocalVector<String>>> vgroups;
 		{
 			HashMap<String, List<PropertyInfo>> none_subgroup;
 			none_subgroup.insert("<None>", List<PropertyInfo>());
@@ -221,6 +270,7 @@ void ShaderMaterial::_get_property_list(List<PropertyInfo> *p_list) const {
 						subgroup_map.insert("<None>", none_subgroup);
 
 						groups.insert(last_group, subgroup_map);
+						vgroups.push_back(Pair<String, LocalVector<String>>(last_group, { "<None>" }));
 					}
 
 					if (!groups[last_group].has(last_subgroup)) {
@@ -233,6 +283,12 @@ void ShaderMaterial::_get_property_list(List<PropertyInfo> *p_list) const {
 						subgroup.push_back(info);
 
 						groups[last_group].insert(last_subgroup, subgroup);
+						for (Pair<String, LocalVector<String>> &group : vgroups) {
+							if (group.first == last_group) {
+								group.second.push_back(last_subgroup);
+								break;
+							}
+						}
 					}
 				} else {
 					last_group = "<None>";
@@ -250,28 +306,49 @@ void ShaderMaterial::_get_property_list(List<PropertyInfo> *p_list) const {
 				info.name = "Shader Parameters";
 				info.hint_string = "shader_parameter/";
 				groups["<None>"]["<None>"].push_back(info);
+
+				vgroups.push_back(Pair<String, LocalVector<String>>("<None>", { "<None>" }));
+			}
+
+			const bool is_uniform_cached = param_cache.has(E->get().name);
+			bool is_uniform_type_compatible = true;
+
+			if (is_uniform_cached) {
+				// Check if the uniform Variant type changed, for example vec3 to vec4.
+				const Variant &cached = param_cache.get(E->get().name);
+
+				if (cached.is_array()) {
+					// Allow some array conversions for backwards compatibility.
+					is_uniform_type_compatible = Variant::can_convert(E->get().type, cached.get_type());
+				} else {
+					is_uniform_type_compatible = E->get().type == cached.get_type();
+				}
+
+				if (is_uniform_type_compatible && E->get().type == Variant::OBJECT && cached.get_type() == Variant::OBJECT) {
+					// Check if the Object class (hint string) changed, for example Texture2D sampler to Texture3D.
+					// Allow inheritance, Texture2D type sampler should also accept CompressedTexture2D.
+					Object *cached_obj = cached;
+					if (!cached_obj->is_class(E->get().hint_string)) {
+						is_uniform_type_compatible = false;
+					}
+				}
 			}
 
 			PropertyInfo info = E->get();
 			info.name = "shader_parameter/" + info.name;
+			if (!is_uniform_cached || !is_uniform_type_compatible) {
+				// Property has never been edited or its type changed, retrieve with default value.
+				Variant default_value = RenderingServer::get_singleton()->shader_get_parameter_default(shader->get_rid(), E->get().name);
+				param_cache.insert(E->get().name, default_value);
+				remap_cache.insert(info.name, E->get().name);
+			}
 			groups[last_group][last_subgroup].push_back(info);
 		}
 
-		List<String> group_names;
-		for (HashMap<String, HashMap<String, List<PropertyInfo>>>::Iterator group = groups.begin(); group; ++group) {
-			group_names.push_back(group->key);
-		}
-		group_names.sort();
-
-		for (const String &group_name : group_names) {
-			List<String> subgroup_names;
-			HashMap<String, List<PropertyInfo>> &subgroups = groups[group_name];
-			for (HashMap<String, List<PropertyInfo>>::Iterator subgroup = subgroups.begin(); subgroup; ++subgroup) {
-				subgroup_names.push_back(subgroup->key);
-			}
-			subgroup_names.sort();
-			for (const String &subgroup_name : subgroup_names) {
-				List<PropertyInfo> &prop_infos = subgroups[subgroup_name];
+		for (const Pair<String, LocalVector<String>> &group_pair : vgroups) {
+			String group = group_pair.first;
+			for (const String &subgroup : group_pair.second) {
+				List<PropertyInfo> &prop_infos = groups[group][subgroup];
 				for (List<PropertyInfo>::Element *item = prop_infos.front(); item; item = item->next()) {
 					p_list->push_back(item->get());
 				}
@@ -282,11 +359,10 @@ void ShaderMaterial::_get_property_list(List<PropertyInfo> *p_list) const {
 
 bool ShaderMaterial::_property_can_revert(const StringName &p_name) const {
 	if (shader.is_valid()) {
-		StringName pr = shader->remap_parameter(p_name);
+		const StringName *pr = remap_cache.getptr(p_name);
 		if (pr) {
-			Variant default_value = RenderingServer::get_singleton()->shader_get_parameter_default(shader->get_rid(), pr);
-			Variant current_value;
-			_get(p_name, current_value);
+			Variant default_value = RenderingServer::get_singleton()->shader_get_parameter_default(shader->get_rid(), *pr);
+			Variant current_value = get_shader_parameter(*pr);
 			return default_value.get_type() != Variant::NIL && default_value != current_value;
 		}
 	}
@@ -295,9 +371,9 @@ bool ShaderMaterial::_property_can_revert(const StringName &p_name) const {
 
 bool ShaderMaterial::_property_get_revert(const StringName &p_name, Variant &r_property) const {
 	if (shader.is_valid()) {
-		StringName pr = shader->remap_parameter(p_name);
-		if (pr) {
-			r_property = RenderingServer::get_singleton()->shader_get_parameter_default(shader->get_rid(), pr);
+		const StringName *pr = remap_cache.getptr(p_name);
+		if (*pr) {
+			r_property = RenderingServer::get_singleton()->shader_get_parameter_default(shader->get_rid(), *pr);
 			return true;
 		}
 	}
@@ -309,7 +385,7 @@ void ShaderMaterial::set_shader(const Ref<Shader> &p_shader) {
 	// This can be a slow operation, and `notify_property_list_changed()` (which is called by `_shader_changed()`)
 	// does nothing in non-editor builds anyway. See GH-34741 for details.
 	if (shader.is_valid() && Engine::get_singleton()->is_editor_hint()) {
-		shader->disconnect("changed", callable_mp(this, &ShaderMaterial::_shader_changed));
+		shader->disconnect_changed(callable_mp(this, &ShaderMaterial::_shader_changed));
 	}
 
 	shader = p_shader;
@@ -319,7 +395,7 @@ void ShaderMaterial::set_shader(const Ref<Shader> &p_shader) {
 		rid = shader->get_rid();
 
 		if (Engine::get_singleton()->is_editor_hint()) {
-			shader->connect("changed", callable_mp(this, &ShaderMaterial::_shader_changed));
+			shader->connect_changed(callable_mp(this, &ShaderMaterial::_shader_changed));
 		}
 	}
 
@@ -337,7 +413,15 @@ void ShaderMaterial::set_shader_parameter(const StringName &p_param, const Varia
 		param_cache.erase(p_param);
 		RS::get_singleton()->material_set_param(_get_material(), p_param, Variant());
 	} else {
-		param_cache[p_param] = p_value;
+		Variant *v = param_cache.getptr(p_param);
+		if (!v) {
+			// Never assigned, also update the remap cache.
+			remap_cache["shader_parameter/" + p_param.operator String()] = p_param;
+			param_cache.insert(p_param, p_value);
+		} else {
+			*v = p_value;
+		}
+
 		if (p_value.get_type() == Variant::OBJECT) {
 			RID tex_rid = p_value;
 			if (tex_rid == RID()) {
@@ -419,13 +503,11 @@ ShaderMaterial::~ShaderMaterial() {
 /////////////////////////////////
 
 Mutex BaseMaterial3D::material_mutex;
-SelfList<BaseMaterial3D>::List *BaseMaterial3D::dirty_materials = nullptr;
+SelfList<BaseMaterial3D>::List BaseMaterial3D::dirty_materials;
 HashMap<BaseMaterial3D::MaterialKey, BaseMaterial3D::ShaderData, BaseMaterial3D::MaterialKey> BaseMaterial3D::shader_map;
 BaseMaterial3D::ShaderNames *BaseMaterial3D::shader_names = nullptr;
 
 void BaseMaterial3D::init_shaders() {
-	dirty_materials = memnew(SelfList<BaseMaterial3D>::List);
-
 	shader_names = memnew(ShaderNames);
 
 	shader_names->albedo = "albedo";
@@ -512,14 +594,14 @@ HashMap<uint64_t, Ref<StandardMaterial3D>> BaseMaterial3D::materials_for_2d;
 void BaseMaterial3D::finish_shaders() {
 	materials_for_2d.clear();
 
-	memdelete(dirty_materials);
-	dirty_materials = nullptr;
+	dirty_materials.clear();
 
 	memdelete(shader_names);
+	shader_names = nullptr;
 }
 
 void BaseMaterial3D::_update_shader() {
-	dirty_materials->remove(&element);
+	dirty_materials.remove(&element);
 
 	MaterialKey mk = _compute_key();
 	if (mk == current_key) {
@@ -695,6 +777,9 @@ void BaseMaterial3D::_update_shader() {
 	if (flags[FLAG_USE_SHADOW_TO_OPACITY]) {
 		code += ",shadow_to_opacity";
 	}
+	if (flags[FLAG_DISABLE_FOG]) {
+		code += ",fog_disabled";
+	}
 
 	if (transparency == TRANSPARENCY_ALPHA_DEPTH_PRE_PASS) {
 		code += ",depth_prepass_alpha";
@@ -796,6 +881,14 @@ void BaseMaterial3D::_update_shader() {
 		code += "uniform sampler2D texture_refraction : " + texfilter_str + ";\n";
 		code += "uniform float refraction : hint_range(-16,16);\n";
 		code += "uniform vec4 refraction_texture_channel;\n";
+	}
+
+	if (features[FEATURE_REFRACTION]) {
+		code += "uniform sampler2D screen_texture : hint_screen_texture, repeat_disable, filter_linear_mipmap;";
+	}
+
+	if (proximity_fade_enabled) {
+		code += "uniform sampler2D depth_texture : hint_depth_texture, repeat_disable, filter_nearest;";
 	}
 
 	if (features[FEATURE_NORMAL_MAPPING]) {
@@ -915,11 +1008,14 @@ void BaseMaterial3D::_update_shader() {
 		} break;
 		case BILLBOARD_PARTICLES: {
 			//make billboard
-			code += "	mat4 mat_world = mat4(normalize(INV_VIEW_MATRIX[0]) * length(MODEL_MATRIX[0]), normalize(INV_VIEW_MATRIX[1]) * length(MODEL_MATRIX[0]),normalize(INV_VIEW_MATRIX[2]) * length(MODEL_MATRIX[2]), MODEL_MATRIX[3]);\n";
+			code += "	mat4 mat_world = mat4(normalize(INV_VIEW_MATRIX[0]), normalize(INV_VIEW_MATRIX[1]) ,normalize(INV_VIEW_MATRIX[2]), MODEL_MATRIX[3]);\n";
 			//rotate by rotation
 			code += "	mat_world = mat_world * mat4(vec4(cos(INSTANCE_CUSTOM.x), -sin(INSTANCE_CUSTOM.x), 0.0, 0.0), vec4(sin(INSTANCE_CUSTOM.x), cos(INSTANCE_CUSTOM.x), 0.0, 0.0), vec4(0.0, 0.0, 1.0, 0.0), vec4(0.0, 0.0, 0.0, 1.0));\n";
 			//set modelview
 			code += "	MODELVIEW_MATRIX = VIEW_MATRIX * mat_world;\n";
+			if (flags[FLAG_BILLBOARD_KEEP_SCALE]) {
+				code += "	MODELVIEW_MATRIX = MODELVIEW_MATRIX * mat4(vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0),vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0), vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));\n";
+			}
 			//set modelview normal
 			code += "	MODELVIEW_NORMAL_MATRIX = mat3(MODELVIEW_MATRIX);\n";
 
@@ -1046,7 +1142,7 @@ void BaseMaterial3D::_update_shader() {
 
 	if (!RenderingServer::get_singleton()->is_low_end() && features[FEATURE_HEIGHT_MAPPING] && !flags[FLAG_UV1_USE_TRIPLANAR]) { //heightmap not supported with triplanar
 		code += "	{\n";
-		code += "		vec3 view_dir = normalize(normalize(-VERTEX)*mat3(TANGENT*heightmap_flip.x,-BINORMAL*heightmap_flip.y,NORMAL));\n"; // binormal is negative due to mikktspace, flip 'unflips' it ;-)
+		code += "		vec3 view_dir = normalize(normalize(-VERTEX + EYE_OFFSET) * mat3(TANGENT * heightmap_flip.x, -BINORMAL * heightmap_flip.y, NORMAL));\n"; // binormal is negative due to mikktspace, flip 'unflips' it ;-)
 
 		if (deep_parallax) {
 			code += "		float num_layers = mix(float(heightmap_max_layers),float(heightmap_min_layers), abs(dot(vec3(0.0, 0.0, 1.0), view_dir)));\n";
@@ -1235,7 +1331,7 @@ void BaseMaterial3D::_update_shader() {
 			code += "	vec2 ref_ofs = SCREEN_UV - ref_normal.xy * dot(texture(texture_refraction,base_uv),refraction_texture_channel) * refraction;\n";
 		}
 		code += "	float ref_amount = 1.0 - albedo.a * albedo_tex.a;\n";
-		code += "	EMISSION += textureLod(SCREEN_TEXTURE,ref_ofs,ROUGHNESS * 8.0).rgb * ref_amount;\n";
+		code += "	EMISSION += textureLod(screen_texture,ref_ofs,ROUGHNESS * 8.0).rgb * ref_amount * EXPOSURE;\n";
 		code += "	ALBEDO *= 1.0 - ref_amount;\n";
 		code += "	ALPHA = 1.0;\n";
 
@@ -1253,22 +1349,23 @@ void BaseMaterial3D::_update_shader() {
 	}
 
 	if (proximity_fade_enabled) {
-		code += "	float depth_tex = textureLod(DEPTH_TEXTURE,SCREEN_UV,0.0).r;\n";
+		code += "	float depth_tex = textureLod(depth_texture,SCREEN_UV,0.0).r;\n";
 		code += "	vec4 world_pos = INV_PROJECTION_MATRIX * vec4(SCREEN_UV*2.0-1.0,depth_tex,1.0);\n";
 		code += "	world_pos.xyz/=world_pos.w;\n";
 		code += "	ALPHA*=clamp(1.0-smoothstep(world_pos.z+proximity_fade_distance,world_pos.z,VERTEX.z),0.0,1.0);\n";
 	}
 
 	if (distance_fade != DISTANCE_FADE_DISABLED) {
+		// Use the slightly more expensive circular fade (distance to the object) instead of linear
+		// (Z distance), so that the fade is always the same regardless of the camera angle.
 		if ((distance_fade == DISTANCE_FADE_OBJECT_DITHER || distance_fade == DISTANCE_FADE_PIXEL_DITHER)) {
 			if (!RenderingServer::get_singleton()->is_low_end()) {
 				code += "	{\n";
 
 				if (distance_fade == DISTANCE_FADE_OBJECT_DITHER) {
-					code += "		float fade_distance = abs((VIEW_MATRIX * MODEL_MATRIX[3]).z);\n";
-
+					code += "		float fade_distance = length((VIEW_MATRIX * MODEL_MATRIX[3]));\n";
 				} else {
-					code += "		float fade_distance = -VERTEX.z;\n";
+					code += "		float fade_distance = length(VERTEX);\n";
 				}
 				// Use interleaved gradient noise, which is fast but still looks good.
 				code += "		const vec3 magic = vec3(0.06711056f, 0.00583715f, 52.9829189f);";
@@ -1282,7 +1379,7 @@ void BaseMaterial3D::_update_shader() {
 			}
 
 		} else {
-			code += "	ALPHA*=clamp(smoothstep(distance_fade_min,distance_fade_max,-VERTEX.z),0.0,1.0);\n";
+			code += "	ALPHA *= clamp(smoothstep(distance_fade_min, distance_fade_max, length(VERTEX)), 0.0, 1.0);\n";
 		}
 	}
 
@@ -1426,16 +1523,16 @@ void BaseMaterial3D::_update_shader() {
 void BaseMaterial3D::flush_changes() {
 	MutexLock lock(material_mutex);
 
-	while (dirty_materials->first()) {
-		dirty_materials->first()->self()->_update_shader();
+	while (dirty_materials.first()) {
+		dirty_materials.first()->self()->_update_shader();
 	}
 }
 
 void BaseMaterial3D::_queue_shader_change() {
 	MutexLock lock(material_mutex);
 
-	if (is_initialized && !element.in_list()) {
-		dirty_materials->add(&element);
+	if (_is_initialized() && !element.in_list()) {
+		dirty_materials.add(&element);
 	}
 }
 
@@ -1862,12 +1959,6 @@ void BaseMaterial3D::_validate_feature(const String &text, Feature feature, Prop
 	}
 }
 
-void BaseMaterial3D::_validate_high_end(const String &text, PropertyInfo &property) const {
-	if (property.name.begins_with(text)) {
-		property.usage |= PROPERTY_USAGE_HIGH_END_GFX;
-	}
-}
-
 void BaseMaterial3D::_validate_property(PropertyInfo &p_property) const {
 	_validate_feature("normal", FEATURE_NORMAL_MAPPING, p_property);
 	_validate_feature("emission", FEATURE_EMISSION, p_property);
@@ -1880,10 +1971,6 @@ void BaseMaterial3D::_validate_property(PropertyInfo &p_property) const {
 	_validate_feature("backlight", FEATURE_BACKLIGHT, p_property);
 	_validate_feature("refraction", FEATURE_REFRACTION, p_property);
 	_validate_feature("detail", FEATURE_DETAIL, p_property);
-
-	_validate_high_end("refraction", p_property);
-	_validate_high_end("subsurf_scatter", p_property);
-	_validate_high_end("heightmap", p_property);
 
 	if (p_property.name == "emission_intensity" && !GLOBAL_GET("rendering/lights_and_shadows/use_physical_light_units")) {
 		p_property.usage = PROPERTY_USAGE_NONE;
@@ -2275,71 +2362,51 @@ BaseMaterial3D::TextureChannel BaseMaterial3D::get_refraction_texture_channel() 
 	return refraction_texture_channel;
 }
 
-Ref<Material> BaseMaterial3D::get_material_for_2d(bool p_shaded, bool p_transparent, bool p_double_sided, bool p_cut_alpha, bool p_opaque_prepass, bool p_billboard, bool p_billboard_y, bool p_msdf, bool p_no_depth, bool p_fixed_size, TextureFilter p_filter, RID *r_shader_rid) {
-	int64_t hash = 0;
-	if (p_shaded) {
-		hash |= 1 << 0;
-	}
-	if (p_transparent) {
-		hash |= 1 << 1;
-	}
-	if (p_cut_alpha) {
-		hash |= 1 << 2;
-	}
-	if (p_opaque_prepass) {
-		hash |= 1 << 3;
-	}
-	if (p_double_sided) {
-		hash |= 1 << 4;
-	}
-	if (p_billboard) {
-		hash |= 1 << 5;
-	}
-	if (p_billboard_y) {
-		hash |= 1 << 6;
-	}
-	if (p_msdf) {
-		hash |= 1 << 7;
-	}
-	if (p_no_depth) {
-		hash |= 1 << 8;
-	}
-	if (p_fixed_size) {
-		hash |= 1 << 9;
-	}
-	hash = hash_murmur3_one_64(p_filter, hash);
+Ref<Material> BaseMaterial3D::get_material_for_2d(bool p_shaded, Transparency p_transparency, bool p_double_sided, bool p_billboard, bool p_billboard_y, bool p_msdf, bool p_no_depth, bool p_fixed_size, TextureFilter p_filter, AlphaAntiAliasing p_alpha_antialiasing_mode, RID *r_shader_rid) {
+	uint64_t key = 0;
+	key |= ((int8_t)p_shaded & 0x01) << 0;
+	key |= ((int8_t)p_transparency & 0x07) << 1; // Bits 1-3.
+	key |= ((int8_t)p_double_sided & 0x01) << 4;
+	key |= ((int8_t)p_billboard & 0x01) << 5;
+	key |= ((int8_t)p_billboard_y & 0x01) << 6;
+	key |= ((int8_t)p_msdf & 0x01) << 7;
+	key |= ((int8_t)p_no_depth & 0x01) << 8;
+	key |= ((int8_t)p_fixed_size & 0x01) << 9;
+	key |= ((int8_t)p_filter & 0x07) << 10; // Bits 10-12.
+	key |= ((int8_t)p_alpha_antialiasing_mode & 0x07) << 13; // Bits 13-15.
 
-	if (materials_for_2d.has(hash)) {
+	if (materials_for_2d.has(key)) {
 		if (r_shader_rid) {
-			*r_shader_rid = materials_for_2d[hash]->get_shader_rid();
+			*r_shader_rid = materials_for_2d[key]->get_shader_rid();
 		}
-		return materials_for_2d[hash];
+		return materials_for_2d[key];
 	}
 
 	Ref<StandardMaterial3D> material;
 	material.instantiate();
 
 	material->set_shading_mode(p_shaded ? SHADING_MODE_PER_PIXEL : SHADING_MODE_UNSHADED);
-	material->set_transparency(p_transparent ? (p_opaque_prepass ? TRANSPARENCY_ALPHA_DEPTH_PRE_PASS : (p_cut_alpha ? TRANSPARENCY_ALPHA_SCISSOR : TRANSPARENCY_ALPHA)) : TRANSPARENCY_DISABLED);
+	material->set_transparency(p_transparency);
 	material->set_cull_mode(p_double_sided ? CULL_DISABLED : CULL_BACK);
 	material->set_flag(FLAG_SRGB_VERTEX_COLOR, true);
 	material->set_flag(FLAG_ALBEDO_FROM_VERTEX_COLOR, true);
 	material->set_flag(FLAG_ALBEDO_TEXTURE_MSDF, p_msdf);
 	material->set_flag(FLAG_DISABLE_DEPTH_TEST, p_no_depth);
 	material->set_flag(FLAG_FIXED_SIZE, p_fixed_size);
+	material->set_alpha_antialiasing(p_alpha_antialiasing_mode);
 	material->set_texture_filter(p_filter);
 	if (p_billboard || p_billboard_y) {
 		material->set_flag(FLAG_BILLBOARD_KEEP_SCALE, true);
 		material->set_billboard_mode(p_billboard_y ? BILLBOARD_FIXED_Y : BILLBOARD_ENABLED);
 	}
 
-	materials_for_2d[hash] = material;
+	materials_for_2d[key] = material;
 
 	if (r_shader_rid) {
-		*r_shader_rid = materials_for_2d[hash]->get_shader_rid();
+		*r_shader_rid = materials_for_2d[key]->get_shader_rid();
 	}
 
-	return materials_for_2d[hash];
+	return materials_for_2d[key];
 }
 
 void BaseMaterial3D::set_on_top_of_alpha() {
@@ -2348,7 +2415,7 @@ void BaseMaterial3D::set_on_top_of_alpha() {
 	set_flag(FLAG_DISABLE_DEPTH_TEST, true);
 }
 
-void BaseMaterial3D::set_proximity_fade(bool p_enable) {
+void BaseMaterial3D::set_proximity_fade_enabled(bool p_enable) {
 	proximity_fade_enabled = p_enable;
 	_queue_shader_change();
 	notify_property_list_changed();
@@ -2624,7 +2691,7 @@ void BaseMaterial3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_refraction_texture_channel", "channel"), &BaseMaterial3D::set_refraction_texture_channel);
 	ClassDB::bind_method(D_METHOD("get_refraction_texture_channel"), &BaseMaterial3D::get_refraction_texture_channel);
 
-	ClassDB::bind_method(D_METHOD("set_proximity_fade", "enabled"), &BaseMaterial3D::set_proximity_fade);
+	ClassDB::bind_method(D_METHOD("set_proximity_fade_enabled", "enabled"), &BaseMaterial3D::set_proximity_fade_enabled);
 	ClassDB::bind_method(D_METHOD("is_proximity_fade_enabled"), &BaseMaterial3D::is_proximity_fade_enabled);
 
 	ClassDB::bind_method(D_METHOD("set_proximity_fade_distance", "distance"), &BaseMaterial3D::set_proximity_fade_distance);
@@ -2661,6 +2728,7 @@ void BaseMaterial3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "diffuse_mode", PROPERTY_HINT_ENUM, "Burley,Lambert,Lambert Wrap,Toon"), "set_diffuse_mode", "get_diffuse_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "specular_mode", PROPERTY_HINT_ENUM, "SchlickGGX,Toon,Disabled"), "set_specular_mode", "get_specular_mode");
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "disable_ambient_light"), "set_flag", "get_flag", FLAG_DISABLE_AMBIENT_LIGHT);
+	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "disable_fog"), "set_flag", "get_flag", FLAG_DISABLE_FOG);
 
 	ADD_GROUP("Vertex Color", "vertex_color");
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "vertex_color_use_as_albedo"), "set_flag", "get_flag", FLAG_ALBEDO_FROM_VERTEX_COLOR);
@@ -2808,11 +2876,11 @@ void BaseMaterial3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "point_size", PROPERTY_HINT_RANGE, "0.1,128,0.1,suffix:px"), "set_point_size", "get_point_size");
 	ADD_PROPERTYI(PropertyInfo(Variant::BOOL, "use_particle_trails"), "set_flag", "get_flag", FLAG_PARTICLE_TRAILS_MODE);
 	ADD_GROUP("Proximity Fade", "proximity_fade_");
-	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "proximity_fade_enable"), "set_proximity_fade", "is_proximity_fade_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "proximity_fade_enabled"), "set_proximity_fade_enabled", "is_proximity_fade_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "proximity_fade_distance", PROPERTY_HINT_RANGE, "0,4096,0.01,suffix:m"), "set_proximity_fade_distance", "get_proximity_fade_distance");
 	ADD_GROUP("MSDF", "msdf_");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "msdf_pixel_range", PROPERTY_HINT_RANGE, "1,100,1"), "set_msdf_pixel_range", "get_msdf_pixel_range");
-	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "msdf_outline_size", PROPERTY_HINT_RANGE, "1,250,1"), "set_msdf_outline_size", "get_msdf_outline_size");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "msdf_outline_size", PROPERTY_HINT_RANGE, "0,250,1"), "set_msdf_outline_size", "get_msdf_outline_size");
 	ADD_GROUP("Distance Fade", "distance_fade_");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "distance_fade_mode", PROPERTY_HINT_ENUM, "Disabled,PixelAlpha,PixelDither,ObjectDither"), "set_distance_fade", "get_distance_fade");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "distance_fade_min_distance", PROPERTY_HINT_RANGE, "0,4096,0.01,suffix:m"), "set_distance_fade_min_distance", "get_distance_fade_min_distance");
@@ -2913,6 +2981,7 @@ void BaseMaterial3D::_bind_methods() {
 	BIND_ENUM_CONSTANT(FLAG_SUBSURFACE_MODE_SKIN);
 	BIND_ENUM_CONSTANT(FLAG_PARTICLE_TRAILS_MODE);
 	BIND_ENUM_CONSTANT(FLAG_ALBEDO_TEXTURE_MSDF);
+	BIND_ENUM_CONSTANT(FLAG_DISABLE_FOG);
 	BIND_ENUM_CONSTANT(FLAG_MAX);
 
 	BIND_ENUM_CONSTANT(DIFFUSE_BURLEY);
@@ -3000,6 +3069,9 @@ BaseMaterial3D::BaseMaterial3D(bool p_orm) :
 
 	set_grow(0.0);
 
+	set_msdf_pixel_range(4.0);
+	set_msdf_outline_size(0.0);
+
 	set_heightmap_deep_parallax_min_layers(8);
 	set_heightmap_deep_parallax_max_layers(32);
 	set_heightmap_deep_parallax_flip_tangent(false); //also sets binormal
@@ -3007,11 +3079,11 @@ BaseMaterial3D::BaseMaterial3D(bool p_orm) :
 	flags[FLAG_ALBEDO_TEXTURE_MSDF] = false;
 	flags[FLAG_USE_TEXTURE_REPEAT] = true;
 
-	is_initialized = true;
-	_queue_shader_change();
+	_mark_initialized(callable_mp(this, &BaseMaterial3D::_queue_shader_change));
 }
 
 BaseMaterial3D::~BaseMaterial3D() {
+	ERR_FAIL_NULL(RenderingServer::get_singleton());
 	MutexLock lock(material_mutex);
 
 	if (shader_map.has(current_key)) {
@@ -3123,8 +3195,6 @@ bool StandardMaterial3D::_set(const StringName &p_name, const Variant &p_value) 
 		WARN_PRINT("Godot 3.x SpatialMaterial remapped parameter not found: " + String(p_name));
 		return true;
 	}
-
-	return false;
 }
 
 #endif // DISABLE_DEPRECATED

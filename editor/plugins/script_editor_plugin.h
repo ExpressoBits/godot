@@ -1,53 +1,54 @@
-/*************************************************************************/
-/*  script_editor_plugin.h                                               */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  script_editor_plugin.h                                                */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #ifndef SCRIPT_EDITOR_PLUGIN_H
 #define SCRIPT_EDITOR_PLUGIN_H
 
 #include "core/object/script_language.h"
-#include "editor/code_editor.h"
-#include "editor/editor_help.h"
-#include "editor/editor_help_search.h"
 #include "editor/editor_plugin.h"
-#include "editor/script_create_dialog.h"
-#include "scene/gui/item_list.h"
-#include "scene/gui/line_edit.h"
-#include "scene/gui/menu_button.h"
-#include "scene/gui/split_container.h"
-#include "scene/gui/tab_container.h"
-#include "scene/gui/text_edit.h"
-#include "scene/gui/tree.h"
-#include "scene/main/timer.h"
+#include "scene/gui/dialogs.h"
+#include "scene/gui/panel_container.h"
+#include "scene/resources/syntax_highlighter.h"
 #include "scene/resources/text_file.h"
 
 class EditorFileDialog;
+class EditorHelpSearch;
+class FindReplaceBar;
+class HSplitContainer;
+class ItemList;
+class MenuButton;
+class TabContainer;
+class TextureRect;
+class Tree;
+class VSplitContainer;
+class WindowWrapper;
 
 class EditorSyntaxHighlighter : public SyntaxHighlighter {
 	GDCLASS(EditorSyntaxHighlighter, SyntaxHighlighter)
@@ -97,6 +98,24 @@ public:
 	virtual Ref<EditorSyntaxHighlighter> _create() const override;
 };
 
+class EditorJSONSyntaxHighlighter : public EditorSyntaxHighlighter {
+	GDCLASS(EditorJSONSyntaxHighlighter, EditorSyntaxHighlighter)
+
+private:
+	Ref<CodeHighlighter> highlighter;
+
+public:
+	virtual void _update_cache() override;
+	virtual Dictionary _get_line_syntax_highlighting_impl(int p_line) override { return highlighter->get_line_syntax_highlighting(p_line); }
+
+	virtual PackedStringArray _get_supported_languages() const override { return PackedStringArray{ "json" }; }
+	virtual String _get_name() const override { return TTR("JSON"); }
+
+	virtual Ref<EditorSyntaxHighlighter> _create() const override;
+
+	EditorJSONSyntaxHighlighter() { highlighter.instantiate(); }
+};
+
 ///////////////////////////////////////////////////////////////////////////////
 
 class ScriptEditorQuickOpen : public ConfirmationDialog {
@@ -139,20 +158,20 @@ public:
 	virtual Ref<Resource> get_edited_resource() const = 0;
 	virtual Vector<String> get_functions() = 0;
 	virtual void set_edited_resource(const Ref<Resource> &p_res) = 0;
-	virtual void enable_editor() = 0;
+	virtual void enable_editor(Control *p_shortcut_context = nullptr) = 0;
 	virtual void reload_text() = 0;
 	virtual String get_name() = 0;
 	virtual Ref<Texture2D> get_theme_icon() = 0;
 	virtual bool is_unsaved() = 0;
 	virtual Variant get_edit_state() = 0;
 	virtual void set_edit_state(const Variant &p_state) = 0;
+	virtual Variant get_navigation_state() = 0;
 	virtual void goto_line(int p_line, bool p_with_error = false) = 0;
 	virtual void set_executing_line(int p_line) = 0;
 	virtual void clear_executing_line() = 0;
 	virtual void trim_trailing_whitespace() = 0;
 	virtual void insert_final_newline() = 0;
-	virtual void convert_indent_to_spaces() = 0;
-	virtual void convert_indent_to_tabs() = 0;
+	virtual void convert_indent() = 0;
 	virtual void ensure_focus() = 0;
 	virtual void tag_saved_version() = 0;
 	virtual void reload(bool p_soft) {}
@@ -219,7 +238,7 @@ class ScriptEditor : public PanelContainer {
 		WINDOW_NEXT,
 		WINDOW_PREV,
 		WINDOW_SORT,
-		WINDOW_SELECT_BASE = 100
+		WINDOW_SELECT_BASE = 100,
 	};
 
 	enum {
@@ -255,6 +274,8 @@ class ScriptEditor : public PanelContainer {
 
 	Button *help_search = nullptr;
 	Button *site_search = nullptr;
+	Button *make_floating = nullptr;
+	bool is_floating = false;
 	EditorHelpSearch *help_search_dialog = nullptr;
 
 	ItemList *script_list = nullptr;
@@ -291,6 +312,8 @@ class ScriptEditor : public PanelContainer {
 	FindInFilesPanel *find_in_files = nullptr;
 	Button *find_in_files_button = nullptr;
 
+	WindowWrapper *window_wrapper = nullptr;
+
 	enum {
 		SCRIPT_EDITOR_FUNC_MAX = 32,
 	};
@@ -318,6 +341,7 @@ class ScriptEditor : public PanelContainer {
 	bool _has_docs_tab() const;
 	bool _has_script_tab() const;
 	void _prepare_file_menu();
+	void _file_menu_closed();
 
 	Tree *disk_changed_list = nullptr;
 	ConfirmationDialog *disk_changed = nullptr;
@@ -371,7 +395,6 @@ class ScriptEditor : public PanelContainer {
 
 	bool open_textfile_after_create = true;
 	bool trim_trailing_whitespace_on_save;
-	bool use_space_indentation;
 	bool convert_indent_on_save;
 
 	void _goto_script_line2(int p_line);
@@ -403,7 +426,6 @@ class ScriptEditor : public PanelContainer {
 	void _filter_scripts_text_changed(const String &p_newtext);
 	void _filter_methods_text_changed(const String &p_newtext);
 	void _update_script_names();
-	void _update_script_connections();
 	bool _sort_list_on_update;
 
 	void _members_overview_selected(int p_idx);
@@ -426,7 +448,7 @@ class ScriptEditor : public PanelContainer {
 	virtual void input(const Ref<InputEvent> &p_event) override;
 	virtual void shortcut_input(const Ref<InputEvent> &p_event) override;
 
-	void _script_list_gui_input(const Ref<InputEvent> &ev);
+	void _script_list_clicked(int p_item, Vector2 p_local_mouse_pos, MouseButton p_mouse_button_index);
 	void _make_script_list_context_menu();
 
 	void _help_search(String p_text);
@@ -463,7 +485,10 @@ class ScriptEditor : public PanelContainer {
 	void _start_find_in_files(bool with_replace);
 	void _on_find_in_files_modified_files(PackedStringArray paths);
 
+	void _window_changed(bool p_visible);
+
 	static void _open_script_request(const String &p_path);
+	void _close_builtin_scripts_from_scene(const String &p_scene);
 
 	static ScriptEditor *script_editor;
 
@@ -477,18 +502,21 @@ public:
 	bool toggle_scripts_panel();
 	bool is_scripts_panel_toggled();
 	void apply_scripts() const;
-	void reload_scripts();
+	void reload_scripts(bool p_refresh_only = false);
 	void open_script_create_dialog(const String &p_base_name, const String &p_base_path);
 	void open_text_file_create_dialog(const String &p_base_path, const String &p_base_name = "");
 	Ref<Resource> open_file(const String &p_file);
 
 	void ensure_select_current();
 
+	bool is_editor_floating();
+
 	_FORCE_INLINE_ bool edit(const Ref<Resource> &p_resource, bool p_grab_focus = true) { return edit(p_resource, -1, 0, p_grab_focus); }
 	bool edit(const Ref<Resource> &p_resource, int p_line, int p_col, bool p_grab_focus = true);
 
 	void get_breakpoints(List<String> *p_breakpoints);
 
+	PackedStringArray get_unsaved_scripts() const;
 	void save_current_script();
 	void save_all_scripts();
 
@@ -505,10 +533,10 @@ public:
 	void notify_script_close(const Ref<Script> &p_script);
 	void notify_script_changed(const Ref<Script> &p_script);
 
-	void close_builtin_scripts_from_scene(const String &p_scene);
-
 	void goto_help(const String &p_desc) { _help_class_goto(p_desc); }
 	void update_doc(const String &p_name);
+	void clear_docs_from_script(const Ref<Script> &p_script);
+	void update_docs_from_script(const Ref<Script> &p_script);
 
 	bool can_take_away_focus() const;
 
@@ -521,7 +549,7 @@ public:
 
 	static void register_create_script_editor_function(CreateScriptEditorFunc p_func);
 
-	ScriptEditor();
+	ScriptEditor(WindowWrapper *p_wrapper);
 	~ScriptEditor();
 };
 
@@ -529,6 +557,17 @@ class ScriptEditorPlugin : public EditorPlugin {
 	GDCLASS(ScriptEditorPlugin, EditorPlugin);
 
 	ScriptEditor *script_editor = nullptr;
+	WindowWrapper *window_wrapper = nullptr;
+
+	String last_editor;
+
+	void _focus_another_editor();
+
+	void _save_last_editor(String p_editor);
+	void _window_visibility_changed(bool p_visible);
+
+protected:
+	void _notification(int p_what);
 
 public:
 	virtual String get_name() const override { return "Script"; }
@@ -538,11 +577,9 @@ public:
 	virtual void make_visible(bool p_visible) override;
 	virtual void selected_notify() override;
 
+	virtual String get_unsaved_status(const String &p_for_scene) const override;
 	virtual void save_external_data() override;
 	virtual void apply_changes() override;
-
-	virtual void restore_global_state() override;
-	virtual void save_global_state() override;
 
 	virtual void set_window_layout(Ref<ConfigFile> p_layout) override;
 	virtual void get_window_layout(Ref<ConfigFile> p_layout) override;

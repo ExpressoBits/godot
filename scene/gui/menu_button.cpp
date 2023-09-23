@@ -1,32 +1,32 @@
-/*************************************************************************/
-/*  menu_button.cpp                                                      */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  menu_button.cpp                                                       */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "menu_button.h"
 
@@ -36,23 +36,16 @@
 void MenuButton::shortcut_input(const Ref<InputEvent> &p_event) {
 	ERR_FAIL_COND(p_event.is_null());
 
-	if (!_is_focus_owner_in_shortcut_context()) {
-		return;
-	}
-
 	if (disable_shortcuts) {
 		return;
 	}
 
-	if (p_event->is_pressed() && !p_event->is_echo() && (Object::cast_to<InputEventKey>(p_event.ptr()) || Object::cast_to<InputEventJoypadButton>(p_event.ptr()) || Object::cast_to<InputEventAction>(*p_event) || Object::cast_to<InputEventShortcut>(*p_event))) {
-		if (!get_parent() || !is_visible_in_tree() || is_disabled()) {
-			return;
-		}
-
-		if (popup->activate_item_by_event(p_event, false)) {
-			accept_event();
-		}
+	if (p_event->is_pressed() && !is_disabled() && is_visible_in_tree() && popup->activate_item_by_event(p_event, false)) {
+		accept_event();
+		return;
 	}
+
+	Button::shortcut_input(p_event);
 }
 
 void MenuButton::_popup_visibility_changed(bool p_visible) {
@@ -64,19 +57,19 @@ void MenuButton::_popup_visibility_changed(bool p_visible) {
 	}
 
 	if (switch_on_hover) {
-		Window *window = Object::cast_to<Window>(get_viewport());
-		if (window) {
-			mouse_pos_adjusted = window->get_position();
+		Window *wnd = Object::cast_to<Window>(get_viewport());
+		if (wnd) {
+			mouse_pos_adjusted = wnd->get_position();
 
-			if (window->is_embedded()) {
-				Window *window_parent = Object::cast_to<Window>(window->get_parent()->get_viewport());
-				while (window_parent) {
-					if (!window_parent->is_embedded()) {
-						mouse_pos_adjusted += window_parent->get_position();
+			if (wnd->is_embedded()) {
+				Window *wnd_parent = Object::cast_to<Window>(wnd->get_parent()->get_viewport());
+				while (wnd_parent) {
+					if (!wnd_parent->is_embedded()) {
+						mouse_pos_adjusted += wnd_parent->get_position();
 						break;
 					}
 
-					window_parent = Object::cast_to<Window>(window_parent->get_parent()->get_viewport());
+					wnd_parent = Object::cast_to<Window>(wnd_parent->get_parent()->get_viewport());
 				}
 			}
 
@@ -91,17 +84,27 @@ void MenuButton::pressed() {
 		return;
 	}
 
-	emit_signal(SNAME("about_to_popup"));
-	Size2 size = get_size() * get_viewport()->get_canvas_transform().get_scale();
+	show_popup();
+}
 
-	popup->set_size(Size2(size.width, 0));
-	Point2 gp = get_screen_position();
-	gp.y += size.y;
-	if (is_layout_rtl()) {
-		gp.x += size.width - popup->get_size().width;
+PopupMenu *MenuButton::get_popup() const {
+	return popup;
+}
+
+void MenuButton::show_popup() {
+	if (!get_viewport()) {
+		return;
 	}
-	popup->set_position(gp);
-	popup->set_parent_rect(Rect2(Point2(gp - popup->get_position()), size));
+
+	emit_signal(SNAME("about_to_popup"));
+	Rect2 rect = get_screen_rect();
+	rect.position.y += rect.size.height;
+	rect.size.height = 0;
+	popup->set_size(rect.size);
+	if (is_layout_rtl()) {
+		rect.position.x += rect.size.width - popup->get_size().width;
+	}
+	popup->set_position(rect.position);
 
 	// If not triggered by the mouse, start the popup with its first enabled item focused.
 	if (!_was_pressed_by_mouse()) {
@@ -114,14 +117,6 @@ void MenuButton::pressed() {
 	}
 
 	popup->popup();
-}
-
-void MenuButton::gui_input(const Ref<InputEvent> &p_event) {
-	BaseButton::gui_input(p_event);
-}
-
-PopupMenu *MenuButton::get_popup() const {
-	return popup;
 }
 
 void MenuButton::set_switch_on_hover(bool p_enabled) {
@@ -171,6 +166,10 @@ void MenuButton::_notification(int p_what) {
 				// As the popup wasn't triggered by a mouse click, the item focus needs to be removed manually.
 				menu_btn_other->get_popup()->set_focused_item(-1);
 			}
+		} break;
+
+		case NOTIFICATION_TRANSLATION_CHANGED: {
+			popup->set_auto_translate(is_auto_translating());
 		} break;
 	}
 }
@@ -226,6 +225,7 @@ void MenuButton::_get_property_list(List<PropertyInfo> *p_list) const {
 
 void MenuButton::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_popup"), &MenuButton::get_popup);
+	ClassDB::bind_method(D_METHOD("show_popup"), &MenuButton::show_popup);
 	ClassDB::bind_method(D_METHOD("set_switch_on_hover", "enable"), &MenuButton::set_switch_on_hover);
 	ClassDB::bind_method(D_METHOD("is_switch_on_hover"), &MenuButton::is_switch_on_hover);
 	ClassDB::bind_method(D_METHOD("set_disable_shortcuts", "disabled"), &MenuButton::set_disable_shortcuts);

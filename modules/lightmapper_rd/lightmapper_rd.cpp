@@ -1,40 +1,41 @@
-/*************************************************************************/
-/*  lightmapper_rd.cpp                                                   */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  lightmapper_rd.cpp                                                    */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "lightmapper_rd.h"
 
-#include "core/config/project_settings.h"
-#include "core/math/geometry_2d.h"
 #include "lm_blendseams.glsl.gen.h"
 #include "lm_compute.glsl.gen.h"
 #include "lm_raster.glsl.gen.h"
+
+#include "core/config/project_settings.h"
+#include "core/math/geometry_2d.h"
 #include "servers/rendering/rendering_device_binds.h"
 
 //uncomment this if you want to see textures from all the process saved
@@ -251,15 +252,11 @@ Lightmapper::BakeError LightmapperRD::_blit_meshes_into_atlas(int p_max_texture_
 	}
 
 	for (int i = 0; i < atlas_slices; i++) {
-		Ref<Image> albedo;
-		albedo.instantiate();
-		albedo->create(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBA8);
+		Ref<Image> albedo = Image::create_empty(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBA8);
 		albedo->set_as_black();
 		albedo_images.write[i] = albedo;
 
-		Ref<Image> emission;
-		emission.instantiate();
-		emission->create(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH);
+		Ref<Image> emission = Image::create_empty(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH);
 		emission->set_as_black();
 		emission_images.write[i] = emission;
 	}
@@ -278,7 +275,7 @@ Lightmapper::BakeError LightmapperRD::_blit_meshes_into_atlas(int p_max_texture_
 	return BAKE_OK;
 }
 
-void LightmapperRD::_create_acceleration_structures(RenderingDevice *rd, Size2i atlas_size, int atlas_slices, AABB &bounds, int grid_size, Vector<Probe> &probe_positions, GenerateProbes p_generate_probes, Vector<int> &slice_triangle_count, Vector<int> &slice_seam_count, RID &vertex_buffer, RID &triangle_buffer, RID &lights_buffer, RID &triangle_cell_indices_buffer, RID &probe_positions_buffer, RID &grid_texture, RID &seams_buffer, BakeStepFunc p_step_function, void *p_bake_userdata) {
+void LightmapperRD::_create_acceleration_structures(RenderingDevice *rd, Size2i atlas_size, int atlas_slices, AABB &bounds, int grid_size, Vector<Probe> &p_probe_positions, GenerateProbes p_generate_probes, Vector<int> &slice_triangle_count, Vector<int> &slice_seam_count, RID &vertex_buffer, RID &triangle_buffer, RID &lights_buffer, RID &triangle_cell_indices_buffer, RID &probe_positions_buffer, RID &grid_texture, RID &seams_buffer, BakeStepFunc p_step_function, void *p_bake_userdata) {
 	HashMap<Vertex, uint32_t, VertexHash> vertex_map;
 
 	//fill triangles array and vertex array
@@ -403,8 +400,8 @@ void LightmapperRD::_create_acceleration_structures(RenderingDevice *rd, Size2i 
 	}
 
 	//also consider probe positions for bounds
-	for (int i = 0; i < probe_positions.size(); i++) {
-		Vector3 pp(probe_positions[i].position[0], probe_positions[i].position[1], probe_positions[i].position[2]);
+	for (int i = 0; i < p_probe_positions.size(); i++) {
+		Vector3 pp(p_probe_positions[i].position[0], p_probe_positions[i].position[1], p_probe_positions[i].position[2]);
 		bounds.expand_to(pp);
 	}
 	bounds.grow_by(0.1); //grow a bit to avoid numerical error
@@ -478,9 +475,7 @@ void LightmapperRD::_create_acceleration_structures(RenderingDevice *rd, Size2i 
 			grid_usage.write[j] = count > 0 ? 255 : 0;
 		}
 
-		Ref<Image> img;
-		img.instantiate();
-		img->create(grid_size, grid_size, false, Image::FORMAT_L8, grid_usage);
+		Ref<Image> img = Image::create_from_data(grid_size, grid_size, false, Image::FORMAT_L8, grid_usage);
 		img->save_png("res://grid_layer_" + itos(1000 + i).substr(1, 3) + ".png");
 	}
 #endif
@@ -520,7 +515,7 @@ void LightmapperRD::_create_acceleration_structures(RenderingDevice *rd, Size2i 
 		}
 		seams_buffer = rd->storage_buffer_create(sb.size(), sb);
 
-		Vector<uint8_t> pb = probe_positions.to_byte_array();
+		Vector<uint8_t> pb = p_probe_positions.to_byte_array();
 		if (pb.size() == 0) {
 			pb.resize(sizeof(Probe));
 		}
@@ -594,8 +589,12 @@ void LightmapperRD::_raster_geometry(RenderingDevice *rd, Size2i atlas_size, int
 		raster_push_constant.grid_size[0] = grid_size;
 		raster_push_constant.grid_size[1] = grid_size;
 		raster_push_constant.grid_size[2] = grid_size;
-		raster_push_constant.uv_offset[0] = 0;
-		raster_push_constant.uv_offset[1] = 0;
+
+		// Half pixel offset is required so the rasterizer doesn't output face edges directly aligned into pixels.
+		// This fixes artifacts where the pixel would be traced from the edge of a face, causing half the rays to
+		// be outside of the boundaries of the geometry. See <https://github.com/godotengine/godot/issues/69126>.
+		raster_push_constant.uv_offset[0] = -0.5f / float(atlas_size.x);
+		raster_push_constant.uv_offset[1] = -0.5f / float(atlas_size.y);
 
 		RD::DrawListID draw_list = rd->draw_list_begin(framebuffers[i], RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_DISCARD, clear_colors);
 		//draw opaque
@@ -660,9 +659,7 @@ LightmapperRD::BakeError LightmapperRD::_dilate(RenderingDevice *rd, Ref<RDShade
 #ifdef DEBUG_TEXTURES
 	for (int i = 0; i < atlas_slices; i++) {
 		Vector<uint8_t> s = rd->texture_get_data(light_accum_tex, i);
-		Ref<Image> img;
-		img.instantiate();
-		img->create(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
+		Ref<Image> img = Image::create_from_data(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
 		img->convert(Image::FORMAT_RGBA8);
 		img->save_png("res://5_dilated_" + itos(i) + ".png");
 	}
@@ -778,7 +775,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 				panorama_tex->convert(Image::FORMAT_RGBAF);
 			} else {
 				panorama_tex.instantiate();
-				panorama_tex->create(8, 8, false, Image::FORMAT_RGBAF);
+				panorama_tex->initialize_data(8, 8, false, Image::FORMAT_RGBAF);
 				panorama_tex->fill(Color(0, 0, 0, 1));
 			}
 
@@ -953,13 +950,11 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 
 	for (int i = 0; i < atlas_slices; i++) {
 		Vector<uint8_t> s = rd->texture_get_data(position_tex, i);
-		Ref<Image> img;
-		img.instantiate();
-		img->create(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAF, s);
+		Ref<Image> img = Image::create_from_data(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAF, s);
 		img->save_exr("res://1_position_" + itos(i) + ".exr", false);
 
 		s = rd->texture_get_data(normal_tex, i);
-		img->create(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
+		img->set_data(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
 		img->save_exr("res://1_normal_" + itos(i) + ".exr", false);
 	}
 #endif
@@ -1182,9 +1177,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 
 	for (int i = 0; i < atlas_slices; i++) {
 		Vector<uint8_t> s = rd->texture_get_data(light_source_tex, i);
-		Ref<Image> img;
-		img.instantiate();
-		img->create(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
+		Ref<Image> img = Image::create_from_data(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
 		img->save_exr("res://2_light_primary_" + itos(i) + ".exr", false);
 	}
 #endif
@@ -1415,14 +1408,10 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 
 #if 0
 	for (int i = 0; i < probe_positions.size(); i++) {
-		Ref<Image> img;
-		img.instantiate();
-		img->create(6, 4, false, Image::FORMAT_RGB8);
+		Ref<Image> img = Image::create_empty(6, 4, false, Image::FORMAT_RGB8);
 		for (int j = 0; j < 6; j++) {
 			Vector<uint8_t> s = rd->texture_get_data(lightprobe_tex, i * 6 + j);
-			Ref<Image> img2;
-			img2.instantiate();
-			img2->create(2, 2, false, Image::FORMAT_RGBAF, s);
+			Ref<Image> img2 = Image::create_from_data(2, 2, false, Image::FORMAT_RGBAF, s);
 			img2->convert(Image::FORMAT_RGB8);
 			img->blit_rect(img2, Rect2i(0, 0, 2, 2), Point2i((j % 3) * 2, (j / 3) * 2));
 		}
@@ -1449,9 +1438,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 		if (denoiser.is_valid()) {
 			for (int i = 0; i < atlas_slices * (p_bake_sh ? 4 : 1); i++) {
 				Vector<uint8_t> s = rd->texture_get_data(light_accum_tex, i);
-				Ref<Image> img;
-				img.instantiate();
-				img->create(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
+				Ref<Image> img = Image::create_from_data(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
 
 				Ref<Image> denoised = denoiser->denoise_image(img);
 				if (denoised != img) {
@@ -1484,9 +1471,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 
 	for (int i = 0; i < atlas_slices * (p_bake_sh ? 4 : 1); i++) {
 		Vector<uint8_t> s = rd->texture_get_data(light_accum_tex, i);
-		Ref<Image> img;
-		img.instantiate();
-		img->create(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
+		Ref<Image> img = Image::create_from_data(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
 		img->save_exr("res://4_light_secondary_" + itos(i) + ".exr", false);
 	}
 #endif
@@ -1598,8 +1583,8 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 				{
 					seams_push_constant.base_index = seam_offset;
 					rd->draw_list_bind_render_pipeline(draw_list, blendseams_line_raster_pipeline);
-					seams_push_constant.uv_offset[0] = uv_offsets[0].x / float(atlas_size.width);
-					seams_push_constant.uv_offset[1] = uv_offsets[0].y / float(atlas_size.height);
+					seams_push_constant.uv_offset[0] = (uv_offsets[0].x - 0.5f) / float(atlas_size.width);
+					seams_push_constant.uv_offset[1] = (uv_offsets[0].y - 0.5f) / float(atlas_size.height);
 					seams_push_constant.blend = uv_offsets[0].z;
 
 					rd->draw_list_set_push_constant(draw_list, &seams_push_constant, sizeof(RasterSeamsPushConstant));
@@ -1622,8 +1607,8 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 
 				for (int j = 1; j < uv_offset_count; j++) {
 					seams_push_constant.base_index = seam_offset;
-					seams_push_constant.uv_offset[0] = uv_offsets[j].x / float(atlas_size.width);
-					seams_push_constant.uv_offset[1] = uv_offsets[j].y / float(atlas_size.height);
+					seams_push_constant.uv_offset[0] = (uv_offsets[j].x - 0.5f) / float(atlas_size.width);
+					seams_push_constant.uv_offset[1] = (uv_offsets[j].y - 0.5f) / float(atlas_size.height);
 					seams_push_constant.blend = uv_offsets[0].z;
 
 					rd->draw_list_set_push_constant(draw_list, &seams_push_constant, sizeof(RasterSeamsPushConstant));
@@ -1640,9 +1625,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 
 	for (int i = 0; i < atlas_slices * (p_bake_sh ? 4 : 1); i++) {
 		Vector<uint8_t> s = rd->texture_get_data(light_accum_tex, i);
-		Ref<Image> img;
-		img.instantiate();
-		img->create(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
+		Ref<Image> img = Image::create_from_data(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
 		img->save_exr("res://5_blendseams" + itos(i) + ".exr", false);
 	}
 #endif
@@ -1652,9 +1635,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 
 	for (int i = 0; i < atlas_slices * (p_bake_sh ? 4 : 1); i++) {
 		Vector<uint8_t> s = rd->texture_get_data(light_accum_tex, i);
-		Ref<Image> img;
-		img.instantiate();
-		img->create(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
+		Ref<Image> img = Image::create_from_data(atlas_size.width, atlas_size.height, false, Image::FORMAT_RGBAH, s);
 		img->convert(Image::FORMAT_RGBH); //remove alpha
 		bake_textures.push_back(img);
 	}
@@ -1667,9 +1648,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 
 #ifdef DEBUG_TEXTURES
 		{
-			Ref<Image> img2;
-			img2.instantiate();
-			img2->create(probe_values.size(), 1, false, Image::FORMAT_RGBAF, probe_data);
+			Ref<Image> img2 = Image::create_from_data(probe_values.size(), 1, false, Image::FORMAT_RGBAF, probe_data);
 			img2->save_exr("res://6_lightprobes.exr", false);
 		}
 #endif

@@ -1,32 +1,32 @@
-/*************************************************************************/
-/*  test_string.h                                                        */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  test_string.h                                                         */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #ifndef TEST_STRING_H
 #define TEST_STRING_H
@@ -170,10 +170,10 @@ TEST_CASE("[String] Invalid UTF8 (non-standard)") {
 	ERR_PRINT_OFF
 	static const uint8_t u8str[] = { 0x45, 0xE3, 0x81, 0x8A, 0xE3, 0x82, 0x88, 0xE3, 0x81, 0x86, 0xF0, 0x9F, 0x8E, 0xA4, 0xF0, 0x82, 0x82, 0xAC, 0xED, 0xA0, 0x81, 0 };
 	//                               +     +2                +2                +2                +3                      overlong +3             unpaired +2
-	static const char32_t u32str[] = { 0x45, 0x304A, 0x3088, 0x3046, 0x1F3A4, 0x20AC, 0xD801, 0 };
+	static const char32_t u32str[] = { 0x45, 0x304A, 0x3088, 0x3046, 0x1F3A4, 0x20AC, 0xFFFD, 0 };
 	String s;
 	Error err = s.parse_utf8((const char *)u8str);
-	CHECK(err == ERR_PARSE_ERROR);
+	CHECK(err == ERR_INVALID_DATA);
 	CHECK(s == u32str);
 
 	CharString cs = (const char *)u8str;
@@ -185,7 +185,7 @@ TEST_CASE("[String] Invalid UTF8 (unrecoverable)") {
 	ERR_PRINT_OFF
 	static const uint8_t u8str[] = { 0x45, 0xE3, 0x81, 0x8A, 0x8F, 0xE3, 0xE3, 0x98, 0x8F, 0xE3, 0x82, 0x88, 0xE3, 0x81, 0x86, 0xC0, 0x80, 0xF0, 0x9F, 0x8E, 0xA4, 0xF0, 0x82, 0x82, 0xAC, 0xED, 0xA0, 0x81, 0 };
 	//                               +     +2                inv   +2    inv   inv   inv   +2                +2                ovl NUL +1  +3                      overlong +3             unpaired +2
-	static const char32_t u32str[] = { 0x45, 0x304A, 0x20, 0x20, 0x20, 0x20, 0x3088, 0x3046, 0x20, 0x1F3A4, 0x20AC, 0xD801, 0 };
+	static const char32_t u32str[] = { 0x45, 0x304A, 0xFFFD, 0xFFFD, 0xFFFD, 0xFFFD, 0x3088, 0x3046, 0xFFFD, 0x1F3A4, 0x20AC, 0xFFFD, 0 };
 	String s;
 	Error err = s.parse_utf8((const char *)u8str);
 	CHECK(err == ERR_INVALID_DATA);
@@ -226,6 +226,12 @@ TEST_CASE("[String] Comparisons (equal)") {
 	CHECK(s == U"Test Compare");
 	CHECK(s == L"Test Compare");
 	CHECK(s == String("Test Compare"));
+
+	CharString empty = "";
+	CharString cs = "Test Compare";
+	CHECK(!(empty == cs));
+	CHECK(!(cs == empty));
+	CHECK(cs == CharString("Test Compare"));
 }
 
 TEST_CASE("[String] Comparisons (not equal)") {
@@ -295,8 +301,8 @@ TEST_CASE("[String] Test chr") {
 	CHECK(String::chr('H') == "H");
 	CHECK(String::chr(0x3012)[0] == 0x3012);
 	ERR_PRINT_OFF
-	CHECK(String::chr(0xd812)[0] == 0xd812); // Unpaired UTF-16 surrogate
-	CHECK(String::chr(0x20d812)[0] == 0x20d812); // Outside UTF-32 range
+	CHECK(String::chr(0xd812)[0] == 0xfffd); // Unpaired UTF-16 surrogate
+	CHECK(String::chr(0x20d812)[0] == 0xfffd); // Outside UTF-32 range
 	ERR_PRINT_ON
 }
 
@@ -389,6 +395,12 @@ TEST_CASE("[String] Insertion") {
 	CHECK(s == "Who is Frederic Chopin?");
 }
 
+TEST_CASE("[String] Erasing") {
+	String s = "Josephine is such a cute girl!";
+	s = s.erase(s.find("cute "), String("cute ").length());
+	CHECK(s == "Josephine is such a girl!");
+}
+
 TEST_CASE("[String] Number to string") {
 	CHECK(String::num(0) == "0");
 	CHECK(String::num(0.0) == "0"); // No trailing zeros.
@@ -411,9 +423,13 @@ TEST_CASE("[String] Number to string") {
 	CHECK(String::num_real(3.141593) == "3.141593");
 	CHECK(String::num_real(3.141) == "3.141"); // No trailing zeros.
 #ifdef REAL_T_IS_DOUBLE
+	CHECK_MESSAGE(String::num_real(123.456789) == "123.456789", "Prints the appropriate amount of digits for real_t = double.");
+	CHECK_MESSAGE(String::num_real(-123.456789) == "-123.456789", "Prints the appropriate amount of digits for real_t = double.");
 	CHECK_MESSAGE(String::num_real(Math_PI) == "3.14159265358979", "Prints the appropriate amount of digits for real_t = double.");
 	CHECK_MESSAGE(String::num_real(3.1415f) == "3.1414999961853", "Prints more digits of 32-bit float when real_t = double (ones that would be reliable for double) and no trailing zero.");
 #else
+	CHECK_MESSAGE(String::num_real(123.456789) == "123.4568", "Prints the appropriate amount of digits for real_t = float.");
+	CHECK_MESSAGE(String::num_real(-123.456789) == "-123.4568", "Prints the appropriate amount of digits for real_t = float.");
 	CHECK_MESSAGE(String::num_real(Math_PI) == "3.141593", "Prints the appropriate amount of digits for real_t = float.");
 	CHECK_MESSAGE(String::num_real(3.1415f) == "3.1415", "Prints only reliable digits of 32-bit float when real_t = float.");
 #endif // REAL_T_IS_DOUBLE
@@ -481,6 +497,7 @@ TEST_CASE("[String] Splitting") {
 
 	const char *slices_l[3] = { "Mars", "Jupiter", "Saturn,Uranus" };
 	const char *slices_r[3] = { "Mars,Jupiter", "Saturn", "Uranus" };
+	const char *slices_3[4] = { "t", "e", "s", "t" };
 
 	l = s.split(",", true, 2);
 	CHECK(l.size() == 3);
@@ -494,6 +511,21 @@ TEST_CASE("[String] Splitting") {
 		CHECK(l[i] == slices_r[i]);
 	}
 
+	s = "test";
+	l = s.split();
+	CHECK(l.size() == 4);
+	for (int i = 0; i < l.size(); i++) {
+		CHECK(l[i] == slices_3[i]);
+	}
+
+	s = "";
+	l = s.split();
+	CHECK(l.size() == 1);
+	CHECK(l[0] == "");
+
+	l = s.split("", false);
+	CHECK(l.size() == 0);
+
 	s = "Mars Jupiter Saturn Uranus";
 	const char *slices_s[4] = { "Mars", "Jupiter", "Saturn", "Uranus" };
 	l = s.split_spaces();
@@ -504,21 +536,22 @@ TEST_CASE("[String] Splitting") {
 	s = "1.2;2.3 4.5";
 	const double slices_d[3] = { 1.2, 2.3, 4.5 };
 
-	Vector<float> f;
-	f = s.split_floats(";");
-	CHECK(f.size() == 2);
-	for (int i = 0; i < f.size(); i++) {
-		CHECK(ABS(f[i] - slices_d[i]) <= 0.00001);
+	Vector<double> d_arr;
+	d_arr = s.split_floats(";");
+	CHECK(d_arr.size() == 2);
+	for (int i = 0; i < d_arr.size(); i++) {
+		CHECK(ABS(d_arr[i] - slices_d[i]) <= 0.00001);
 	}
 
 	Vector<String> keys;
 	keys.push_back(";");
 	keys.push_back(" ");
 
-	f = s.split_floats_mk(keys);
-	CHECK(f.size() == 3);
-	for (int i = 0; i < f.size(); i++) {
-		CHECK(ABS(f[i] - slices_d[i]) <= 0.00001);
+	Vector<float> f_arr;
+	f_arr = s.split_floats_mk(keys);
+	CHECK(f_arr.size() == 3);
+	for (int i = 0; i < f_arr.size(); i++) {
+		CHECK(ABS(f_arr[i] - slices_d[i]) <= 0.00001);
 	}
 
 	s = "1;2 4";
@@ -740,6 +773,14 @@ TEST_CASE("[String] sprintf") {
 	REQUIRE(error == false);
 	CHECK(output == String("fish   99.990000 frog"));
 
+	// Real (infinity) left-padded
+	format = "fish %11f frog";
+	args.clear();
+	args.push_back(INFINITY);
+	output = format.sprintf(args, &error);
+	REQUIRE(error == false);
+	CHECK(output == String("fish         inf frog"));
+
 	// Real right-padded.
 	format = "fish %-11f frog";
 	args.clear();
@@ -763,6 +804,22 @@ TEST_CASE("[String] sprintf") {
 	output = format.sprintf(args, &error);
 	REQUIRE(error == false);
 	CHECK(output == String("fish +99.990000 frog"));
+
+	// Real with sign (negative zero).
+	format = "fish %+f frog";
+	args.clear();
+	args.push_back(-0.0);
+	output = format.sprintf(args, &error);
+	REQUIRE(error == false);
+	CHECK(output == String("fish -0.000000 frog"));
+
+	// Real with sign (positive zero).
+	format = "fish %+f frog";
+	args.clear();
+	args.push_back(0.0);
+	output = format.sprintf(args, &error);
+	REQUIRE(error == false);
+	CHECK(output == String("fish +0.000000 frog"));
 
 	// Real with 1 decimal.
 	format = "fish %.1f frog";
@@ -839,6 +896,14 @@ TEST_CASE("[String] sprintf") {
 	output = format.sprintf(args, &error);
 	REQUIRE(error == false);
 	CHECK(output == String("fish (  19.990000,    1.000000,   -2.050000) frog"));
+
+	// Vector left-padded with inf/nan
+	format = "fish %11v frog";
+	args.clear();
+	args.push_back(Variant(Vector2(INFINITY, NAN)));
+	output = format.sprintf(args, &error);
+	REQUIRE(error == false);
+	CHECK(output == String("fish (        inf,         nan) frog"));
 
 	// Vector right-padded.
 	format = "fish %-11v frog";
@@ -1046,7 +1111,9 @@ TEST_CASE("[String] pad") {
 
 	s = String("10.10");
 	CHECK(s.pad_decimals(4) == U"10.1000");
+	CHECK(s.pad_decimals(1) == U"10.1");
 	CHECK(s.pad_zeros(4) == U"0010.10");
+	CHECK(s.pad_zeros(1) == U"10.10");
 }
 
 TEST_CASE("[String] is_subsequence_of") {
@@ -1321,8 +1388,8 @@ TEST_CASE("[String] Ensuring empty string into parse_utf8 passes empty string") 
 }
 
 TEST_CASE("[String] Cyrillic to_lower()") {
-	String upper = String::utf8("АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ");
-	String lower = String::utf8("абвгдеёжзийклмнопрстуфхцчшщъыьэюя");
+	String upper = U"АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ";
+	String lower = U"абвгдеёжзийклмнопрстуфхцчшщъыьэюя";
 
 	String test = upper.to_lower();
 
@@ -1408,20 +1475,22 @@ TEST_CASE("[String] dedent") {
 }
 
 TEST_CASE("[String] Path functions") {
-	static const char *path[7] = { "C:\\Godot\\project\\test.tscn", "/Godot/project/test.xscn", "../Godot/project/test.scn", "Godot\\test.doc", "C:\\test.", "res://test", "/.test" };
-	static const char *base_dir[7] = { "C:\\Godot\\project", "/Godot/project", "../Godot/project", "Godot", "C:\\", "res://", "/" };
-	static const char *base_name[7] = { "C:\\Godot\\project\\test", "/Godot/project/test", "../Godot/project/test", "Godot\\test", "C:\\test", "res://test", "/" };
-	static const char *ext[7] = { "tscn", "xscn", "scn", "doc", "", "", "test" };
-	static const char *file[7] = { "test.tscn", "test.xscn", "test.scn", "test.doc", "test.", "test", ".test" };
-	static const bool abs[7] = { true, true, false, false, true, true, true };
+	static const char *path[8] = { "C:\\Godot\\project\\test.tscn", "/Godot/project/test.xscn", "../Godot/project/test.scn", "Godot\\test.doc", "C:\\test.", "res://test", "user://test", "/.test" };
+	static const char *base_dir[8] = { "C:\\Godot\\project", "/Godot/project", "../Godot/project", "Godot", "C:\\", "res://", "user://", "/" };
+	static const char *base_name[8] = { "C:\\Godot\\project\\test", "/Godot/project/test", "../Godot/project/test", "Godot\\test", "C:\\test", "res://test", "user://test", "/" };
+	static const char *ext[8] = { "tscn", "xscn", "scn", "doc", "", "", "", "test" };
+	static const char *file[8] = { "test.tscn", "test.xscn", "test.scn", "test.doc", "test.", "test", "test", ".test" };
+	static const char *simplified[8] = { "C:/Godot/project/test.tscn", "/Godot/project/test.xscn", "Godot/project/test.scn", "Godot/test.doc", "C:/test.", "res://test", "user://test", "/.test" };
+	static const bool abs[8] = { true, true, false, false, true, true, true, true };
 
-	for (int i = 0; i < 7; i++) {
+	for (int i = 0; i < 8; i++) {
 		CHECK(String(path[i]).get_base_dir() == base_dir[i]);
 		CHECK(String(path[i]).get_basename() == base_name[i]);
 		CHECK(String(path[i]).get_extension() == ext[i]);
 		CHECK(String(path[i]).get_file() == file[i]);
 		CHECK(String(path[i]).is_absolute_path() == abs[i]);
 		CHECK(String(path[i]).is_relative_path() != abs[i]);
+		CHECK(String(path[i]).simplify_path() == String(simplified[i]));
 		CHECK(String(path[i]).simplify_path().get_base_dir().path_join(file[i]) == String(path[i]).simplify_path());
 	}
 
@@ -1556,6 +1625,11 @@ TEST_CASE("[String] Repeat") {
 	CHECK(t == s);
 }
 
+TEST_CASE("[String] Reverse") {
+	String s = "Abcd";
+	CHECK(s.reverse() == "dcbA");
+}
+
 TEST_CASE("[String] SHA1/SHA256/MD5") {
 	String s = "Godot";
 	String sha1 = "a1e91f39b9fce6a9998b14bdbe2aa2b39dc2d201";
@@ -1633,8 +1707,8 @@ TEST_CASE("[String] validate_node_name") {
 	String name_with_kana = U"Name with kana ゴドツ";
 	CHECK(name_with_kana.validate_node_name() == U"Name with kana ゴドツ");
 
-	String name_with_invalid_chars = "Name with invalid characters :.@removed!";
-	CHECK(name_with_invalid_chars.validate_node_name() == "Name with invalid characters removed!");
+	String name_with_invalid_chars = "Name with invalid characters :.@%removed!";
+	CHECK(name_with_invalid_chars.validate_node_name() == "Name with invalid characters ____removed!");
 }
 
 TEST_CASE("[String] validate_identifier") {
@@ -1647,7 +1721,7 @@ TEST_CASE("[String] validate_identifier") {
 	String name_with_spaces = "Name with spaces";
 	CHECK(name_with_spaces.validate_identifier() == "Name_with_spaces");
 
-	String name_with_invalid_chars = String::utf8("Invalid characters:@*#&世界");
+	String name_with_invalid_chars = U"Invalid characters:@*#&世界";
 	CHECK(name_with_invalid_chars.validate_identifier() == "Invalid_characters_______");
 }
 

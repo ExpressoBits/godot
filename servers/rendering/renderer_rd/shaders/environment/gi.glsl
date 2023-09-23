@@ -4,6 +4,10 @@
 
 #VERSION_DEFINES
 
+#ifdef SAMPLE_VOXEL_GI_NEAREST
+#extension GL_EXT_samplerless_texture_functions : enable
+#endif
+
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 #define M_PI 3.141592
@@ -108,7 +112,9 @@ layout(set = 0, binding = 18, std140) uniform SceneData {
 }
 scene_data;
 
+#ifdef USE_VRS
 layout(r8ui, set = 0, binding = 19) uniform restrict readonly uimage2D vrs_buffer;
+#endif
 
 layout(push_constant, std430) uniform Params {
 	uint max_voxel_gi_instances;
@@ -623,7 +629,11 @@ void process_gi(ivec2 pos, vec3 vertex, inout vec4 ambient_light, inout vec4 ref
 
 #ifdef USE_VOXEL_GI_INSTANCES
 		{
+#ifdef SAMPLE_VOXEL_GI_NEAREST
+			uvec2 voxel_gi_tex = texelFetch(voxel_gi_buffer, pos, 0).rg;
+#else
 			uvec2 voxel_gi_tex = texelFetch(usampler2D(voxel_gi_buffer, linear_sampler), pos, 0).rg;
+#endif
 			roughness *= roughness;
 			//find arbitrary tangent and bitangent, then build a matrix
 			vec3 v0 = abs(normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
@@ -661,6 +671,7 @@ void main() {
 	ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
 
 	uint vrs_x, vrs_y;
+#ifdef USE_VRS
 	if (sc_use_vrs) {
 		ivec2 vrs_pos;
 
@@ -684,6 +695,7 @@ void main() {
 			return;
 		}
 	}
+#endif
 
 	if (sc_half_res) {
 		pos <<= 1;
@@ -708,6 +720,7 @@ void main() {
 	imageStore(ambient_buffer, pos, ambient_light);
 	imageStore(reflection_buffer, pos, reflection_light);
 
+#ifdef USE_VRS
 	if (sc_use_vrs) {
 		if (vrs_x > 1) {
 			imageStore(ambient_buffer, pos + ivec2(1, 0), ambient_light);
@@ -766,4 +779,5 @@ void main() {
 			imageStore(reflection_buffer, pos + ivec2(3, 3), reflection_light);
 		}
 	}
+#endif
 }

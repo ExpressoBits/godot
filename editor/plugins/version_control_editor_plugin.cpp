@@ -1,32 +1,32 @@
-/*************************************************************************/
-/*  version_control_editor_plugin.cpp                                    */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  version_control_editor_plugin.cpp                                     */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "version_control_editor_plugin.h"
 
@@ -34,10 +34,13 @@
 #include "core/os/keyboard.h"
 #include "core/os/time.h"
 #include "editor/editor_file_system.h"
+#include "editor/editor_interface.h"
 #include "editor/editor_node.h"
 #include "editor/editor_scale.h"
 #include "editor/editor_settings.h"
+#include "editor/editor_string_names.h"
 #include "editor/filesystem_dock.h"
+#include "editor/plugins/script_editor_plugin.h"
 #include "scene/gui/separator.h"
 
 #define CHECK_PLUGIN_INITIALIZED() \
@@ -46,43 +49,7 @@
 VersionControlEditorPlugin *VersionControlEditorPlugin::singleton = nullptr;
 
 void VersionControlEditorPlugin::_bind_methods() {
-	ClassDB::bind_method(D_METHOD("_initialize_vcs"), &VersionControlEditorPlugin::_initialize_vcs);
-	ClassDB::bind_method(D_METHOD("_set_credentials"), &VersionControlEditorPlugin::_set_credentials);
-	ClassDB::bind_method(D_METHOD("_update_set_up_warning"), &VersionControlEditorPlugin::_update_set_up_warning);
-	ClassDB::bind_method(D_METHOD("_commit"), &VersionControlEditorPlugin::_commit);
-	ClassDB::bind_method(D_METHOD("_refresh_stage_area"), &VersionControlEditorPlugin::_refresh_stage_area);
-	ClassDB::bind_method(D_METHOD("_move_all"), &VersionControlEditorPlugin::_move_all);
-	ClassDB::bind_method(D_METHOD("_load_diff"), &VersionControlEditorPlugin::_load_diff);
-	ClassDB::bind_method(D_METHOD("_display_diff"), &VersionControlEditorPlugin::_display_diff);
-	ClassDB::bind_method(D_METHOD("_item_activated"), &VersionControlEditorPlugin::_item_activated);
-	ClassDB::bind_method(D_METHOD("_update_branch_create_button"), &VersionControlEditorPlugin::_update_branch_create_button);
-	ClassDB::bind_method(D_METHOD("_update_remote_create_button"), &VersionControlEditorPlugin::_update_remote_create_button);
-	ClassDB::bind_method(D_METHOD("_update_commit_button"), &VersionControlEditorPlugin::_update_commit_button);
-	ClassDB::bind_method(D_METHOD("_refresh_branch_list"), &VersionControlEditorPlugin::_refresh_branch_list);
-	ClassDB::bind_method(D_METHOD("_set_commit_list_size"), &VersionControlEditorPlugin::_set_commit_list_size);
-	ClassDB::bind_method(D_METHOD("_refresh_commit_list"), &VersionControlEditorPlugin::_refresh_commit_list);
-	ClassDB::bind_method(D_METHOD("_refresh_remote_list"), &VersionControlEditorPlugin::_refresh_remote_list);
-	ClassDB::bind_method(D_METHOD("_ssh_public_key_selected"), &VersionControlEditorPlugin::_ssh_public_key_selected);
-	ClassDB::bind_method(D_METHOD("_ssh_private_key_selected"), &VersionControlEditorPlugin::_ssh_private_key_selected);
-	ClassDB::bind_method(D_METHOD("_commit_message_gui_input"), &VersionControlEditorPlugin::_commit_message_gui_input);
-	ClassDB::bind_method(D_METHOD("_cell_button_pressed"), &VersionControlEditorPlugin::_cell_button_pressed);
-	ClassDB::bind_method(D_METHOD("_discard_all"), &VersionControlEditorPlugin::_discard_all);
-	ClassDB::bind_method(D_METHOD("_create_branch"), &VersionControlEditorPlugin::_create_branch);
-	ClassDB::bind_method(D_METHOD("_create_remote"), &VersionControlEditorPlugin::_create_remote);
-	ClassDB::bind_method(D_METHOD("_remove_branch"), &VersionControlEditorPlugin::_remove_branch);
-	ClassDB::bind_method(D_METHOD("_remove_remote"), &VersionControlEditorPlugin::_remove_remote);
-	ClassDB::bind_method(D_METHOD("_branch_item_selected"), &VersionControlEditorPlugin::_branch_item_selected);
-	ClassDB::bind_method(D_METHOD("_remote_selected"), &VersionControlEditorPlugin::_remote_selected);
-	ClassDB::bind_method(D_METHOD("_fetch"), &VersionControlEditorPlugin::_fetch);
-	ClassDB::bind_method(D_METHOD("_pull"), &VersionControlEditorPlugin::_pull);
-	ClassDB::bind_method(D_METHOD("_push"), &VersionControlEditorPlugin::_push);
-	ClassDB::bind_method(D_METHOD("_extra_option_selected"), &VersionControlEditorPlugin::_extra_option_selected);
-	ClassDB::bind_method(D_METHOD("_update_extra_options"), &VersionControlEditorPlugin::_update_extra_options);
-	ClassDB::bind_method(D_METHOD("_popup_branch_remove_confirm"), &VersionControlEditorPlugin::_popup_branch_remove_confirm);
-	ClassDB::bind_method(D_METHOD("_popup_remote_remove_confirm"), &VersionControlEditorPlugin::_popup_remote_remove_confirm);
-	ClassDB::bind_method(D_METHOD("_popup_file_dialog"), &VersionControlEditorPlugin::_popup_file_dialog);
-
-	ClassDB::bind_method(D_METHOD("popup_vcs_set_up_dialog"), &VersionControlEditorPlugin::popup_vcs_set_up_dialog);
+	// No binds required so far.
 }
 
 void VersionControlEditorPlugin::_create_vcs_metadata_files() {
@@ -92,13 +59,11 @@ void VersionControlEditorPlugin::_create_vcs_metadata_files() {
 
 void VersionControlEditorPlugin::_notification(int p_what) {
 	if (p_what == NOTIFICATION_READY) {
-		String installed_plugin = GLOBAL_DEF("editor/version_control/plugin_name", "");
-		String project_path = GLOBAL_DEF("editor/version_control/project_path", OS::get_singleton()->get_resource_dir());
-		project_path_input->set_text(project_path);
-		bool has_autoload_enable = GLOBAL_DEF("editor/version_control/autoload_on_startup", false);
+		String installed_plugin = GLOBAL_GET("editor/version_control/plugin_name");
+		bool has_autoload_enable = GLOBAL_GET("editor/version_control/autoload_on_startup");
 
 		if (installed_plugin != "" && has_autoload_enable) {
-			if (_load_plugin(installed_plugin, project_path)) {
+			if (_load_plugin(installed_plugin)) {
 				_set_credentials();
 			}
 		}
@@ -143,18 +108,15 @@ void VersionControlEditorPlugin::_initialize_vcs() {
 	const int id = set_up_choice->get_selected_id();
 	String selected_plugin = set_up_choice->get_item_text(id);
 
-	if (_load_plugin(selected_plugin, project_path_input->get_text())) {
+	if (_load_plugin(selected_plugin)) {
 		ProjectSettings::get_singleton()->set("editor/version_control/autoload_on_startup", true);
 		ProjectSettings::get_singleton()->set("editor/version_control/plugin_name", selected_plugin);
-		ProjectSettings::get_singleton()->set("editor/version_control/project_path", project_path_input->get_text());
 		ProjectSettings::get_singleton()->save();
 	}
 }
 
 void VersionControlEditorPlugin::_set_vcs_ui_state(bool p_enabled) {
-	select_project_path_button->set_disabled(p_enabled);
 	set_up_dialog->get_ok_button()->set_disabled(!p_enabled);
-	project_path_input->set_editable(!p_enabled);
 	set_up_choice->set_disabled(p_enabled);
 	toggle_vcs_choice->set_pressed_no_signal(p_enabled);
 }
@@ -180,14 +142,14 @@ void VersionControlEditorPlugin::_set_credentials() {
 	EditorSettings::get_singleton()->set_setting("version_control/ssh_private_key_path", ssh_private_key);
 }
 
-bool VersionControlEditorPlugin::_load_plugin(String p_name, String p_project_path) {
+bool VersionControlEditorPlugin::_load_plugin(String p_name) {
 	Object *extension_instance = ClassDB::instantiate(p_name);
 	ERR_FAIL_NULL_V_MSG(extension_instance, false, "Received a nullptr VCS extension instance during construction.");
 
 	EditorVCSInterface *vcs_plugin = Object::cast_to<EditorVCSInterface>(extension_instance);
 	ERR_FAIL_NULL_V_MSG(vcs_plugin, false, vformat("Could not cast VCS extension instance to %s.", EditorVCSInterface::get_class_static()));
 
-	String res_dir = project_path_input->get_text();
+	String res_dir = OS::get_singleton()->get_resource_dir();
 
 	ERR_FAIL_COND_V_MSG(!vcs_plugin->initialize(res_dir), false, "Could not initialize " + p_name);
 
@@ -212,7 +174,7 @@ void VersionControlEditorPlugin::_update_set_up_warning(String p_new_text) {
 			set_up_ssh_passphrase->get_text().is_empty();
 
 	if (empty_settings) {
-		set_up_warning_text->add_theme_color_override(SNAME("font_color"), EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("warning_color"), SNAME("Editor")));
+		set_up_warning_text->add_theme_color_override(SNAME("font_color"), EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("warning_color"), EditorStringName(Editor)));
 		set_up_warning_text->set_text(TTR("Remote settings are empty. VCS features that use the network may not work."));
 	} else {
 		set_up_warning_text->set_text("");
@@ -230,7 +192,7 @@ void VersionControlEditorPlugin::_refresh_branch_list() {
 	String current_branch = EditorVCSInterface::get_singleton()->get_current_branch_name();
 
 	for (int i = 0; i < branch_list.size(); i++) {
-		branch_select->add_icon_item(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("VcsBranches"), SNAME("EditorIcons")), branch_list[i], i);
+		branch_select->add_icon_item(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("VcsBranches"), EditorStringName(EditorIcons)), branch_list[i], i);
 
 		if (branch_list[i] == current_branch) {
 			branch_select->select(i);
@@ -290,7 +252,7 @@ void VersionControlEditorPlugin::_refresh_remote_list() {
 	remote_select->set_disabled(remotes.is_empty());
 
 	for (int i = 0; i < remotes.size(); i++) {
-		remote_select->add_icon_item(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("ArrowUp"), SNAME("EditorIcons")), remotes[i], i);
+		remote_select->add_icon_item(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("ArrowUp"), EditorStringName(EditorIcons)), remotes[i], i);
 		remote_select->set_item_metadata(i, remotes[i]);
 
 		if (remotes[i] == current_remote) {
@@ -430,8 +392,12 @@ void VersionControlEditorPlugin::_discard_file(String p_file_path, EditorVCSInte
 		CHECK_PLUGIN_INITIALIZED();
 		EditorVCSInterface::get_singleton()->discard_file(p_file_path);
 	}
-	// FIXIT: The project.godot file shows weird behaviour
+	// FIXIT: The project.godot file shows weird behavior
 	EditorFileSystem::get_singleton()->update_file(p_file_path);
+}
+
+void VersionControlEditorPlugin::_confirm_discard_all() {
+	discard_all_confirm->popup_centered();
 }
 
 void VersionControlEditorPlugin::_discard_all() {
@@ -456,9 +422,9 @@ void VersionControlEditorPlugin::_add_new_item(Tree *p_tree, String p_file_path,
 	new_item->set_meta(SNAME("change_type"), p_change);
 	new_item->set_custom_color(0, change_type_to_color[p_change]);
 
-	new_item->add_button(0, EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("File"), SNAME("EditorIcons")), BUTTON_TYPE_OPEN, false, TTR("Open in editor"));
+	new_item->add_button(0, EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("File"), EditorStringName(EditorIcons)), BUTTON_TYPE_OPEN, false, TTR("Open in editor"));
 	if (p_tree == unstaged_files) {
-		new_item->add_button(0, EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("Close"), SNAME("EditorIcons")), BUTTON_TYPE_DISCARD, false, TTR("Discard changes"));
+		new_item->add_button(0, EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Close"), EditorStringName(EditorIcons)), BUTTON_TYPE_DISCARD, false, TTR("Discard changes"));
 	}
 }
 
@@ -493,7 +459,7 @@ void VersionControlEditorPlugin::_force_push() {
 }
 
 void VersionControlEditorPlugin::_update_opened_tabs() {
-	Vector<EditorData::EditedScene> open_scenes = EditorNode::get_singleton()->get_editor_data().get_edited_scenes();
+	Vector<EditorData::EditedScene> open_scenes = EditorNode::get_editor_data().get_edited_scenes();
 	for (int i = 0; i < open_scenes.size(); i++) {
 		if (open_scenes[i].root == NULL) {
 			continue;
@@ -604,8 +570,8 @@ void VersionControlEditorPlugin::_display_diff(int p_idx) {
 		String commit_author = meta_data[SNAME("commit_author")];
 		String commit_date_string = meta_data[SNAME("commit_date_string")];
 
-		diff->push_font(EditorNode::get_singleton()->get_gui_base()->get_theme_font(SNAME("doc_bold"), SNAME("EditorFonts")));
-		diff->push_color(EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("accent_color"), SNAME("Editor")));
+		diff->push_font(EditorNode::get_singleton()->get_editor_theme()->get_font(SNAME("doc_bold"), EditorStringName(EditorFonts)));
+		diff->push_color(EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("accent_color"), EditorStringName(Editor)));
 		diff->add_text(TTR("Commit:") + " " + commit_id);
 		diff->add_newline();
 		diff->add_text(TTR("Author:") + " " + commit_author);
@@ -624,14 +590,13 @@ void VersionControlEditorPlugin::_display_diff(int p_idx) {
 	for (int i = 0; i < diff_content.size(); i++) {
 		EditorVCSInterface::DiffFile diff_file = diff_content[i];
 
-		diff->push_font(EditorNode::get_singleton()->get_gui_base()->get_theme_font(SNAME("doc_bold"), SNAME("EditorFonts")));
-		diff->push_color(EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("accent_color"), SNAME("Editor")));
+		diff->push_font(EditorNode::get_singleton()->get_editor_theme()->get_font(SNAME("doc_bold"), EditorStringName(EditorFonts)));
+		diff->push_color(EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("accent_color"), EditorStringName(Editor)));
 		diff->add_text(TTR("File:") + " " + diff_file.new_file);
 		diff->pop();
 		diff->pop();
 
-		diff->add_newline();
-		diff->push_font(EditorNode::get_singleton()->get_gui_base()->get_theme_font(SNAME("status_source"), SNAME("EditorFonts")));
+		diff->push_font(EditorNode::get_singleton()->get_editor_theme()->get_font(SNAME("status_source"), EditorStringName(EditorFonts)));
 		for (int j = 0; j < diff_file.diff_hunks.size(); j++) {
 			EditorVCSInterface::DiffHunk hunk = diff_file.diff_hunks[j];
 
@@ -640,6 +605,7 @@ void VersionControlEditorPlugin::_display_diff(int p_idx) {
 			String old_lines = String::num_int64(hunk.old_lines);
 			String new_lines = String::num_int64(hunk.new_lines);
 
+			diff->add_newline();
 			diff->append_text("[center]@@ " + old_start + "," + old_lines + " " + new_start + "," + new_lines + " @@[/center]");
 			diff->add_newline();
 
@@ -651,7 +617,6 @@ void VersionControlEditorPlugin::_display_diff(int p_idx) {
 					_display_diff_unified_view(hunk.diff_lines);
 					break;
 			}
-			diff->add_newline();
 			diff->add_newline();
 		}
 		diff->pop();
@@ -714,16 +679,14 @@ void VersionControlEditorPlugin::_display_diff_split_view(List<EditorVCSInterfac
 		EditorVCSInterface::DiffLine diff_line = parsed_diff[i];
 
 		bool has_change = diff_line.status != " ";
-		static const Color red = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("error_color"), SNAME("Editor"));
-		static const Color green = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("success_color"), SNAME("Editor"));
-		static const Color white = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("font_color"), SNAME("Label")) * Color(1, 1, 1, 0.6);
+		static const Color red = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("error_color"), EditorStringName(Editor));
+		static const Color green = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("success_color"), EditorStringName(Editor));
+		static const Color white = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("font_color"), SNAME("Label")) * Color(1, 1, 1, 0.6);
 
 		if (diff_line.old_line_no >= 0) {
 			diff->push_cell();
-			diff->push_indent(1);
 			diff->push_color(has_change ? red : white);
 			diff->add_text(String::num_int64(diff_line.old_line_no));
-			diff->pop();
 			diff->pop();
 			diff->pop();
 
@@ -752,10 +715,8 @@ void VersionControlEditorPlugin::_display_diff_split_view(List<EditorVCSInterfac
 
 		if (diff_line.new_line_no >= 0) {
 			diff->push_cell();
-			diff->push_indent(1);
 			diff->push_color(has_change ? green : white);
 			diff->add_text(String::num_int64(diff_line.new_line_no));
-			diff->pop();
 			diff->pop();
 			diff->pop();
 
@@ -800,11 +761,11 @@ void VersionControlEditorPlugin::_display_diff_unified_view(List<EditorVCSInterf
 
 		Color color;
 		if (diff_line.status == "+") {
-			color = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("success_color"), SNAME("Editor"));
+			color = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("success_color"), EditorStringName(Editor));
 		} else if (diff_line.status == "-") {
-			color = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("error_color"), SNAME("Editor"));
+			color = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("error_color"), EditorStringName(Editor));
 		} else {
-			color = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("font_color"), SNAME("Label"));
+			color = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("font_color"), SNAME("Label"));
 			color *= Color(1, 1, 1, 0.6);
 		}
 
@@ -895,13 +856,13 @@ void VersionControlEditorPlugin::_popup_remote_remove_confirm(int p_index) {
 void VersionControlEditorPlugin::_update_extra_options() {
 	extra_options_remove_branch_list->clear();
 	for (int i = 0; i < branch_select->get_item_count(); i++) {
-		extra_options_remove_branch_list->add_icon_item(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("VcsBranches"), SNAME("EditorIcons")), branch_select->get_item_text(branch_select->get_item_id(i)));
+		extra_options_remove_branch_list->add_icon_item(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("VcsBranches"), EditorStringName(EditorIcons)), branch_select->get_item_text(branch_select->get_item_id(i)));
 	}
 	extra_options_remove_branch_list->update_canvas_items();
 
 	extra_options_remove_remote_list->clear();
 	for (int i = 0; i < remote_select->get_item_count(); i++) {
-		extra_options_remove_remote_list->add_icon_item(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("ArrowUp"), SNAME("EditorIcons")), remote_select->get_item_text(remote_select->get_item_id(i)));
+		extra_options_remove_remote_list->add_icon_item(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("ArrowUp"), EditorStringName(EditorIcons)), remote_select->get_item_text(remote_select->get_item_id(i)));
 	}
 	extra_options_remove_remote_list->update_canvas_items();
 }
@@ -940,10 +901,6 @@ void VersionControlEditorPlugin::_toggle_vcs_integration(bool p_toggled) {
 	} else {
 		shut_down();
 	}
-}
-
-void VersionControlEditorPlugin::_project_path_selected(String p_project_path) {
-	project_path_input->set_text(p_project_path);
 }
 
 void VersionControlEditorPlugin::fetch_available_vcs_plugin_names() {
@@ -987,7 +944,7 @@ VersionControlEditorPlugin::VersionControlEditorPlugin() {
 	metadata_dialog->set_title(TTR("Create Version Control Metadata"));
 	metadata_dialog->set_min_size(Size2(200, 40));
 	metadata_dialog->get_ok_button()->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_create_vcs_metadata_files));
-	version_control_actions->add_child(metadata_dialog);
+	EditorInterface::get_singleton()->get_base_control()->add_child(metadata_dialog);
 
 	VBoxContainer *metadata_vb = memnew(VBoxContainer);
 	metadata_dialog->add_child(metadata_vb);
@@ -1016,7 +973,7 @@ VersionControlEditorPlugin::VersionControlEditorPlugin() {
 	set_up_dialog->set_min_size(Size2(600, 100));
 	set_up_dialog->add_cancel_button("Cancel");
 	set_up_dialog->set_hide_on_ok(true);
-	version_control_actions->add_child(set_up_dialog);
+	EditorInterface::get_singleton()->get_base_control()->add_child(set_up_dialog);
 
 	Button *set_up_apply_button = set_up_dialog->get_ok_button();
 	set_up_apply_button->set_text(TTR("Apply"));
@@ -1038,34 +995,6 @@ VersionControlEditorPlugin::VersionControlEditorPlugin() {
 	set_up_choice = memnew(OptionButton);
 	set_up_choice->set_h_size_flags(Control::SIZE_EXPAND_FILL);
 	set_up_hbc->add_child(set_up_choice);
-
-	HBoxContainer *project_path_hbc = memnew(HBoxContainer);
-	project_path_hbc->set_h_size_flags(Control::SIZE_FILL);
-	set_up_vbc->add_child(project_path_hbc);
-
-	Label *project_path_label = memnew(Label);
-	project_path_label->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	project_path_label->set_text(TTR("VCS Project Path"));
-	project_path_hbc->add_child(project_path_label);
-
-	project_path_input = memnew(LineEdit);
-	project_path_input->set_h_size_flags(Control::SIZE_EXPAND_FILL);
-	project_path_input->set_text(OS::get_singleton()->get_resource_dir());
-	project_path_hbc->add_child(project_path_input);
-
-	FileDialog *select_project_path_file_dialog = memnew(FileDialog);
-	select_project_path_file_dialog->set_access(FileDialog::ACCESS_FILESYSTEM);
-	select_project_path_file_dialog->set_file_mode(FileDialog::FILE_MODE_OPEN_DIR);
-	select_project_path_file_dialog->set_show_hidden_files(true);
-	select_project_path_file_dialog->set_current_dir(OS::get_singleton()->get_resource_dir());
-	select_project_path_file_dialog->connect(SNAME("dir_selected"), callable_mp(this, &VersionControlEditorPlugin::_project_path_selected));
-	project_path_hbc->add_child(select_project_path_file_dialog);
-
-	select_project_path_button = memnew(Button);
-	select_project_path_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_theme_icon("Folder", "EditorIcons"));
-	select_project_path_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_popup_file_dialog).bind(select_project_path_file_dialog));
-	select_project_path_button->set_tooltip_text(TTR("Select VCS project path"));
-	project_path_hbc->add_child(select_project_path_button);
 
 	HBoxContainer *toggle_vcs_hbc = memnew(HBoxContainer);
 	toggle_vcs_hbc->set_h_size_flags(Control::SIZE_EXPAND_FILL);
@@ -1154,7 +1083,7 @@ VersionControlEditorPlugin::VersionControlEditorPlugin() {
 	set_up_ssh_public_key_input_hbc->add_child(set_up_ssh_public_key_file_dialog);
 
 	Button *select_public_path_button = memnew(Button);
-	select_public_path_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_theme_icon("Folder", "EditorIcons"));
+	select_public_path_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_editor_theme_icon("Folder"));
 	select_public_path_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_popup_file_dialog).bind(set_up_ssh_public_key_file_dialog));
 	select_public_path_button->set_tooltip_text(TTR("Select SSH public key path"));
 	set_up_ssh_public_key_input_hbc->add_child(select_public_path_button);
@@ -1187,7 +1116,7 @@ VersionControlEditorPlugin::VersionControlEditorPlugin() {
 	set_up_ssh_private_key_input_hbc->add_child(set_up_ssh_private_key_file_dialog);
 
 	Button *select_private_path_button = memnew(Button);
-	select_private_path_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_theme_icon("Folder", "EditorIcons"));
+	select_private_path_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_editor_theme_icon("Folder"));
 	select_private_path_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_popup_file_dialog).bind(set_up_ssh_private_key_file_dialog));
 	select_private_path_button->set_tooltip_text(TTR("Select SSH private key path"));
 	set_up_ssh_private_key_input_hbc->add_child(select_private_path_button);
@@ -1232,23 +1161,34 @@ VersionControlEditorPlugin::VersionControlEditorPlugin() {
 	refresh_button = memnew(Button);
 	refresh_button->set_tooltip_text(TTR("Detect new changes"));
 	refresh_button->set_flat(true);
-	refresh_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("Reload"), SNAME("EditorIcons")));
+	refresh_button->set_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Reload"), EditorStringName(EditorIcons)));
 	refresh_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_refresh_stage_area));
 	refresh_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_refresh_commit_list));
 	refresh_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_refresh_branch_list));
 	refresh_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_refresh_remote_list));
 	unstage_title->add_child(refresh_button);
 
+	discard_all_confirm = memnew(AcceptDialog);
+	discard_all_confirm->set_title(TTR("Discard all changes"));
+	discard_all_confirm->set_min_size(Size2i(400, 50));
+	discard_all_confirm->set_text(TTR("This operation is IRREVERSIBLE. Your changes will be deleted FOREVER."));
+	discard_all_confirm->set_hide_on_ok(true);
+	discard_all_confirm->set_ok_button_text(TTR("Permanentally delete my changes"));
+	discard_all_confirm->add_cancel_button();
+	version_commit_dock->add_child(discard_all_confirm);
+
+	discard_all_confirm->get_ok_button()->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_discard_all));
+
 	discard_all_button = memnew(Button);
 	discard_all_button->set_tooltip_text(TTR("Discard all changes"));
-	discard_all_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("Close"), SNAME("EditorIcons")));
-	discard_all_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_discard_all));
+	discard_all_button->set_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Close"), EditorStringName(EditorIcons)));
+	discard_all_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_confirm_discard_all));
 	discard_all_button->set_flat(true);
 	unstage_title->add_child(discard_all_button);
 
 	stage_all_button = memnew(Button);
 	stage_all_button->set_flat(true);
-	stage_all_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("MoveDown"), SNAME("EditorIcons")));
+	stage_all_button->set_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("MoveDown"), EditorStringName(EditorIcons)));
 	stage_all_button->set_tooltip_text(TTR("Stage all changes"));
 	unstage_title->add_child(stage_all_button);
 
@@ -1278,7 +1218,7 @@ VersionControlEditorPlugin::VersionControlEditorPlugin() {
 
 	unstage_all_button = memnew(Button);
 	unstage_all_button->set_flat(true);
-	unstage_all_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("MoveUp"), SNAME("EditorIcons")));
+	unstage_all_button->set_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("MoveUp"), EditorStringName(EditorIcons)));
 	unstage_all_button->set_tooltip_text(TTR("Unstage all changes"));
 	stage_title->add_child(unstage_all_button);
 
@@ -1473,26 +1413,26 @@ VersionControlEditorPlugin::VersionControlEditorPlugin() {
 	fetch_button = memnew(Button);
 	fetch_button->set_flat(true);
 	fetch_button->set_tooltip_text(TTR("Fetch"));
-	fetch_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("Reload"), SNAME("EditorIcons")));
+	fetch_button->set_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("Reload"), EditorStringName(EditorIcons)));
 	fetch_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_fetch));
 	menu_bar->add_child(fetch_button);
 
 	pull_button = memnew(Button);
 	pull_button->set_flat(true);
 	pull_button->set_tooltip_text(TTR("Pull"));
-	pull_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("MoveDown"), SNAME("EditorIcons")));
+	pull_button->set_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("MoveDown"), EditorStringName(EditorIcons)));
 	pull_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_pull));
 	menu_bar->add_child(pull_button);
 
 	push_button = memnew(Button);
 	push_button->set_flat(true);
 	push_button->set_tooltip_text(TTR("Push"));
-	push_button->set_icon(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("MoveUp"), SNAME("EditorIcons")));
+	push_button->set_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("MoveUp"), EditorStringName(EditorIcons)));
 	push_button->connect(SNAME("pressed"), callable_mp(this, &VersionControlEditorPlugin::_push));
 	menu_bar->add_child(push_button);
 
 	extra_options = memnew(MenuButton);
-	extra_options->set_icon(EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("GuiTabMenuHl"), SNAME("EditorIcons")));
+	extra_options->set_icon(EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("GuiTabMenuHl"), EditorStringName(EditorIcons)));
 	extra_options->get_popup()->connect(SNAME("about_to_popup"), callable_mp(this, &VersionControlEditorPlugin::_update_extra_options));
 	extra_options->get_popup()->connect(SNAME("id_pressed"), callable_mp(this, &VersionControlEditorPlugin::_extra_option_selected));
 	menu_bar->add_child(extra_options);
@@ -1523,19 +1463,19 @@ VersionControlEditorPlugin::VersionControlEditorPlugin() {
 	change_type_to_strings[EditorVCSInterface::CHANGE_TYPE_TYPECHANGE] = TTR("Typechange");
 	change_type_to_strings[EditorVCSInterface::CHANGE_TYPE_UNMERGED] = TTR("Unmerged");
 
-	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_NEW] = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("success_color"), SNAME("Editor"));
-	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_MODIFIED] = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("warning_color"), SNAME("Editor"));
-	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_RENAMED] = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("warning_color"), SNAME("Editor"));
-	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_DELETED] = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("error_color"), SNAME("Editor"));
-	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_TYPECHANGE] = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("font_color"), SNAME("Editor"));
-	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_UNMERGED] = EditorNode::get_singleton()->get_gui_base()->get_theme_color(SNAME("warning_color"), SNAME("Editor"));
+	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_NEW] = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("success_color"), EditorStringName(Editor));
+	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_MODIFIED] = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("warning_color"), EditorStringName(Editor));
+	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_RENAMED] = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("warning_color"), EditorStringName(Editor));
+	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_DELETED] = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("error_color"), EditorStringName(Editor));
+	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_TYPECHANGE] = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("font_color"), EditorStringName(Editor));
+	change_type_to_color[EditorVCSInterface::CHANGE_TYPE_UNMERGED] = EditorNode::get_singleton()->get_editor_theme()->get_color(SNAME("warning_color"), EditorStringName(Editor));
 
-	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_NEW] = EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("StatusSuccess"), SNAME("EditorIcons"));
-	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_MODIFIED] = EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("StatusWarning"), SNAME("EditorIcons"));
-	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_RENAMED] = EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("StatusWarning"), SNAME("EditorIcons"));
-	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_TYPECHANGE] = EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("StatusWarning"), SNAME("EditorIcons"));
-	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_DELETED] = EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("StatusError"), SNAME("EditorIcons"));
-	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_UNMERGED] = EditorNode::get_singleton()->get_gui_base()->get_theme_icon(SNAME("StatusWarning"), SNAME("EditorIcons"));
+	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_NEW] = EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("StatusSuccess"), EditorStringName(EditorIcons));
+	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_MODIFIED] = EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("StatusWarning"), EditorStringName(EditorIcons));
+	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_RENAMED] = EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("StatusWarning"), EditorStringName(EditorIcons));
+	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_TYPECHANGE] = EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("StatusWarning"), EditorStringName(EditorIcons));
+	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_DELETED] = EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("StatusError"), EditorStringName(EditorIcons));
+	change_type_to_icon[EditorVCSInterface::CHANGE_TYPE_UNMERGED] = EditorNode::get_singleton()->get_editor_theme()->get_icon(SNAME("StatusWarning"), EditorStringName(EditorIcons));
 
 	version_control_dock = memnew(VBoxContainer);
 	version_control_dock->set_v_size_flags(Control::SIZE_EXPAND_FILL);
@@ -1566,6 +1506,7 @@ VersionControlEditorPlugin::VersionControlEditorPlugin() {
 	diff->set_v_size_flags(TextEdit::SIZE_EXPAND_FILL);
 	diff->set_use_bbcode(true);
 	diff->set_selection_enabled(true);
+	diff->set_context_menu_enabled(true);
 	version_control_dock->add_child(diff);
 
 	_update_set_up_warning("");

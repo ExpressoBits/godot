@@ -1,46 +1,50 @@
-/*************************************************************************/
-/*  bone_map_editor_plugin.cpp                                           */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  bone_map_editor_plugin.cpp                                            */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "bone_map_editor_plugin.h"
 
 #include "editor/editor_scale.h"
+#include "editor/editor_settings.h"
 #include "editor/import/post_import_plugin_skeleton_renamer.h"
 #include "editor/import/post_import_plugin_skeleton_rest_fixer.h"
 #include "editor/import/post_import_plugin_skeleton_track_organizer.h"
 #include "editor/import/scene_import_settings.h"
+#include "scene/gui/aspect_ratio_container.h"
+#include "scene/gui/separator.h"
+#include "scene/gui/texture_rect.h"
 
 void BoneMapperButton::fetch_textures() {
 	if (selected) {
-		set_normal_texture(get_theme_icon(SNAME("BoneMapperHandleSelected"), SNAME("EditorIcons")));
+		set_texture_normal(get_editor_theme_icon(SNAME("BoneMapperHandleSelected")));
 	} else {
-		set_normal_texture(get_theme_icon(SNAME("BoneMapperHandle"), SNAME("EditorIcons")));
+		set_texture_normal(get_editor_theme_icon(SNAME("BoneMapperHandle")));
 	}
 	set_offset(SIDE_LEFT, 0);
 	set_offset(SIDE_RIGHT, 0);
@@ -51,7 +55,7 @@ void BoneMapperButton::fetch_textures() {
 	set_modulate(EditorSettings::get_singleton()->is_dark_theme() ? Color(1, 1, 1) : Color(4.25, 4.25, 4.25));
 
 	circle = memnew(TextureRect);
-	circle->set_texture(get_theme_icon(SNAME("BoneMapperHandleCircle"), SNAME("EditorIcons")));
+	circle->set_texture(get_editor_theme_icon(SNAME("BoneMapperHandleCircle")));
 	add_child(circle);
 	set_state(BONE_MAP_STATE_UNSET);
 }
@@ -63,16 +67,16 @@ StringName BoneMapperButton::get_profile_bone_name() const {
 void BoneMapperButton::set_state(BoneMapState p_state) {
 	switch (p_state) {
 		case BONE_MAP_STATE_UNSET: {
-			circle->set_modulate(EditorSettings::get_singleton()->get("editors/bone_mapper/handle_colors/unset"));
+			circle->set_modulate(EDITOR_GET("editors/bone_mapper/handle_colors/unset"));
 		} break;
 		case BONE_MAP_STATE_SET: {
-			circle->set_modulate(EditorSettings::get_singleton()->get("editors/bone_mapper/handle_colors/set"));
+			circle->set_modulate(EDITOR_GET("editors/bone_mapper/handle_colors/set"));
 		} break;
 		case BONE_MAP_STATE_MISSING: {
-			circle->set_modulate(EditorSettings::get_singleton()->get("editors/bone_mapper/handle_colors/missing"));
+			circle->set_modulate(EDITOR_GET("editors/bone_mapper/handle_colors/missing"));
 		} break;
 		case BONE_MAP_STATE_ERROR: {
-			circle->set_modulate(EditorSettings::get_singleton()->get("editors/bone_mapper/handle_colors/error"));
+			circle->set_modulate(EDITOR_GET("editors/bone_mapper/handle_colors/error"));
 		} break;
 		default: {
 		} break;
@@ -114,7 +118,7 @@ void BoneMapperItem::create_editor() {
 	hbox->add_child(skeleton_bone_selector);
 
 	picker_button = memnew(Button);
-	picker_button->set_icon(get_theme_icon(SNAME("ClassList"), SNAME("EditorIcons")));
+	picker_button->set_icon(get_editor_theme_icon(SNAME("ClassList")));
 	picker_button->connect("pressed", callable_mp(this, &BoneMapperItem::_open_picker));
 	hbox->add_child(picker_button);
 
@@ -190,7 +194,7 @@ void BonePicker::create_bones_tree(Skeleton3D *p_skeleton) {
 
 	items.insert(-1, root);
 
-	Ref<Texture> bone_icon = get_theme_icon(SNAME("BoneAttachment3D"), SNAME("EditorIcons"));
+	Ref<Texture> bone_icon = get_editor_theme_icon(SNAME("BoneAttachment3D"));
 
 	Vector<int> bones_to_process = p_skeleton->get_parentless_bones();
 	bool is_first = true;
@@ -293,7 +297,7 @@ void BoneMapper::create_editor() {
 	group_hbox->add_child(profile_group_selector);
 
 	clear_mapping_button = memnew(Button);
-	clear_mapping_button->set_icon(get_theme_icon(SNAME("Clear"), SNAME("EditorIcons")));
+	clear_mapping_button->set_icon(get_editor_theme_icon(SNAME("Clear")));
 	clear_mapping_button->set_tooltip_text(TTR("Clear mappings in current group."));
 	clear_mapping_button->connect("pressed", callable_mp(this, &BoneMapper::_clear_mapping_current_group));
 	group_hbox->add_child(clear_mapping_button);
@@ -312,7 +316,7 @@ void BoneMapper::create_editor() {
 
 	profile_texture = memnew(TextureRect);
 	profile_texture->set_stretch_mode(TextureRect::STRETCH_KEEP_ASPECT_CENTERED);
-	profile_texture->set_ignore_texture_size(true);
+	profile_texture->set_expand_mode(TextureRect::EXPAND_IGNORE_SIZE);
 	profile_texture->set_h_size_flags(Control::SIZE_FILL);
 	profile_texture->set_v_size_flags(Control::SIZE_FILL);
 	bone_mapper_field->add_child(profile_texture);
@@ -394,13 +398,13 @@ void BoneMapper::recreate_editor() {
 		if (hmn) {
 			StringName hmn_group_name = profile->get_group_name(current_group_idx);
 			if (hmn_group_name == "Body") {
-				profile_texture->set_texture(get_theme_icon(SNAME("BoneMapHumanBody"), SNAME("EditorIcons")));
+				profile_texture->set_texture(get_editor_theme_icon(SNAME("BoneMapHumanBody")));
 			} else if (hmn_group_name == "Face") {
-				profile_texture->set_texture(get_theme_icon(SNAME("BoneMapHumanFace"), SNAME("EditorIcons")));
+				profile_texture->set_texture(get_editor_theme_icon(SNAME("BoneMapHumanFace")));
 			} else if (hmn_group_name == "LeftHand") {
-				profile_texture->set_texture(get_theme_icon(SNAME("BoneMapHumanLeftHand"), SNAME("EditorIcons")));
+				profile_texture->set_texture(get_editor_theme_icon(SNAME("BoneMapHumanLeftHand")));
 			} else if (hmn_group_name == "RightHand") {
-				profile_texture->set_texture(get_theme_icon(SNAME("BoneMapHumanRightHand"), SNAME("EditorIcons")));
+				profile_texture->set_texture(get_editor_theme_icon(SNAME("BoneMapHumanRightHand")));
 			}
 		} else {
 			profile_texture->set_texture(profile->get_texture(current_group_idx));
@@ -562,9 +566,9 @@ int BoneMapper::search_bone_by_name(Skeleton3D *p_skeleton, Vector<String> p_pic
 
 			if (hit_list.size() > 0) {
 				shortest = hit_list[0];
-				for (uint32_t i = 0; i < hit_list.size(); i++) {
-					if (hit_list[i].length() < shortest.length()) {
-						shortest = hit_list[i]; // Prioritize parent.
+				for (const String &hit : hit_list) {
+					if (hit.length() < shortest.length()) {
+						shortest = hit; // Prioritize parent.
 					}
 				}
 			}
@@ -588,9 +592,9 @@ int BoneMapper::search_bone_by_name(Skeleton3D *p_skeleton, Vector<String> p_pic
 
 			if (hit_list.size() > 0) {
 				shortest = hit_list[0];
-				for (uint32_t i = 0; i < hit_list.size(); i++) {
-					if (hit_list[i].length() <= shortest.length()) {
-						shortest = hit_list[i]; // Prioritize parent.
+				for (const String &hit : hit_list) {
+					if (hit.length() <= shortest.length()) {
+						shortest = hit; // Prioritize parent.
 					}
 				}
 			}
@@ -742,7 +746,6 @@ void BoneMapper::auto_mapping_process(Ref<BoneMap> &p_bone_map) {
 		} else {
 			p_bone_map->_set_skeleton_bone_name("LeftEye", skeleton->get_bone_name(bone_idx));
 		}
-		bone_idx = -1;
 
 		bone_idx = search_bone_by_name(skeleton, picklist, BONE_SEGREGATION_RIGHT, neck_or_head);
 		if (bone_idx == -1) {
@@ -750,7 +753,6 @@ void BoneMapper::auto_mapping_process(Ref<BoneMap> &p_bone_map) {
 		} else {
 			p_bone_map->_set_skeleton_bone_name("RightEye", skeleton->get_bone_name(bone_idx));
 		}
-		bone_idx = -1;
 		picklist.clear();
 
 		// 4-2. Guess Jaw
@@ -1309,7 +1311,7 @@ void BoneMapEditor::create_editors() {
 
 void BoneMapEditor::fetch_objects() {
 	skeleton = nullptr;
-	// Hackey... but it may be the easist way to get a selected object from "ImporterScene".
+	// Hackey... but it may be the easiest way to get a selected object from "ImporterScene".
 	SceneImportSettings *si = SceneImportSettings::get_singleton();
 	if (!si) {
 		return;

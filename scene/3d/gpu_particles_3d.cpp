@@ -1,49 +1,70 @@
-/*************************************************************************/
-/*  gpu_particles_3d.cpp                                                 */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  gpu_particles_3d.cpp                                                  */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "gpu_particles_3d.h"
 
+#include "scene/3d/cpu_particles_3d.h"
+#include "scene/resources/curve_texture.h"
+#include "scene/resources/gradient_texture.h"
 #include "scene/resources/particle_process_material.h"
+#include "scene/scene_string_names.h"
 
 AABB GPUParticles3D::get_aabb() const {
 	return AABB();
 }
 
 void GPUParticles3D::set_emitting(bool p_emitting) {
-	RS::get_singleton()->particles_set_emitting(particles, p_emitting);
+	// Do not return even if `p_emitting == emitting` because `emitting` is just an approximation.
 
 	if (p_emitting && one_shot) {
+		if (!active && !emitting) {
+			// Last cycle ended.
+			active = true;
+			time = 0;
+			signal_canceled = false;
+			emission_time = lifetime;
+			active_time = lifetime * (2 - explosiveness_ratio);
+		} else {
+			signal_canceled = true;
+		}
 		set_process_internal(true);
 	} else if (!p_emitting) {
-		set_process_internal(false);
+		if (one_shot) {
+			set_process_internal(true);
+		} else {
+			set_process_internal(false);
+		}
 	}
+
+	emitting = p_emitting;
+	RS::get_singleton()->particles_set_emitting(particles, p_emitting);
 }
 
 void GPUParticles3D::set_amount(int p_amount) {
@@ -122,7 +143,7 @@ void GPUParticles3D::set_collision_base_size(real_t p_size) {
 }
 
 bool GPUParticles3D::is_emitting() const {
-	return RS::get_singleton()->particles_get_emitting(particles);
+	return emitting;
 }
 
 int GPUParticles3D::get_amount() const {
@@ -176,22 +197,22 @@ void GPUParticles3D::set_draw_order(DrawOrder p_order) {
 
 void GPUParticles3D::set_trail_enabled(bool p_enabled) {
 	trail_enabled = p_enabled;
-	RS::get_singleton()->particles_set_trails(particles, trail_enabled, trail_length);
+	RS::get_singleton()->particles_set_trails(particles, trail_enabled, trail_lifetime);
 	update_configuration_warnings();
 }
 
-void GPUParticles3D::set_trail_length(double p_seconds) {
-	ERR_FAIL_COND(p_seconds < 0.001);
-	trail_length = p_seconds;
-	RS::get_singleton()->particles_set_trails(particles, trail_enabled, trail_length);
+void GPUParticles3D::set_trail_lifetime(double p_seconds) {
+	ERR_FAIL_COND(p_seconds < 0.01);
+	trail_lifetime = p_seconds;
+	RS::get_singleton()->particles_set_trails(particles, trail_enabled, trail_lifetime);
 }
 
 bool GPUParticles3D::is_trail_enabled() const {
 	return trail_enabled;
 }
 
-double GPUParticles3D::get_trail_length() const {
-	return trail_length;
+double GPUParticles3D::get_trail_lifetime() const {
+	return trail_lifetime;
 }
 
 GPUParticles3D::DrawOrder GPUParticles3D::get_draw_order() const {
@@ -216,13 +237,13 @@ void GPUParticles3D::set_draw_pass_mesh(int p_pass, const Ref<Mesh> &p_mesh) {
 	ERR_FAIL_INDEX(p_pass, draw_passes.size());
 
 	if (Engine::get_singleton()->is_editor_hint() && draw_passes.write[p_pass].is_valid()) {
-		draw_passes.write[p_pass]->disconnect("changed", callable_mp((Node *)this, &Node::update_configuration_warnings));
+		draw_passes.write[p_pass]->disconnect_changed(callable_mp((Node *)this, &Node::update_configuration_warnings));
 	}
 
 	draw_passes.write[p_pass] = p_mesh;
 
 	if (Engine::get_singleton()->is_editor_hint() && draw_passes.write[p_pass].is_valid()) {
-		draw_passes.write[p_pass]->connect("changed", callable_mp((Node *)this, &Node::update_configuration_warnings), CONNECT_DEFERRED);
+		draw_passes.write[p_pass]->connect_changed(callable_mp((Node *)this, &Node::update_configuration_warnings), CONNECT_DEFERRED);
 	}
 
 	RID mesh_rid;
@@ -269,12 +290,8 @@ bool GPUParticles3D::get_interpolate() const {
 	return interpolate;
 }
 
-TypedArray<String> GPUParticles3D::get_configuration_warnings() const {
-	TypedArray<String> warnings = GeometryInstance3D::get_configuration_warnings();
-
-	if (RenderingServer::get_singleton()->is_low_end()) {
-		warnings.push_back(RTR("GPU-based particles are not supported by the OpenGL video driver.\nUse the CPUParticles3D node instead. You can use the \"Convert to CPUParticles3D\" option for this purpose."));
-	}
+PackedStringArray GPUParticles3D::get_configuration_warnings() const {
+	PackedStringArray warnings = GeometryInstance3D::get_configuration_warnings();
 
 	bool meshes_found = false;
 	bool anim_material_found = false;
@@ -362,6 +379,13 @@ TypedArray<String> GPUParticles3D::get_configuration_warnings() const {
 		if ((dp_count || !skin.is_null()) && (missing_trails || no_materials)) {
 			warnings.push_back(RTR("Trails enabled, but one or more mesh materials are either missing or not set for trails rendering."));
 		}
+		if (OS::get_singleton()->get_current_rendering_method() == "gl_compatibility") {
+			warnings.push_back(RTR("Particle trails are only available when using the Forward+ or Mobile rendering backends."));
+		}
+	}
+
+	if (sub_emitter != NodePath() && OS::get_singleton()->get_current_rendering_method() == "gl_compatibility") {
+		warnings.push_back(RTR("Particle sub-emitters are only available when using the Forward+ or Mobile rendering backends."));
 	}
 
 	return warnings;
@@ -370,6 +394,16 @@ TypedArray<String> GPUParticles3D::get_configuration_warnings() const {
 void GPUParticles3D::restart() {
 	RenderingServer::get_singleton()->particles_restart(particles);
 	RenderingServer::get_singleton()->particles_set_emitting(particles, true);
+
+	emitting = true;
+	active = true;
+	signal_canceled = false;
+	time = 0;
+	emission_time = lifetime * (1 - explosiveness_ratio);
+	active_time = lifetime * (2 - explosiveness_ratio);
+	if (one_shot) {
+		set_process_internal(true);
+	}
 }
 
 AABB GPUParticles3D::capture_aabb() const {
@@ -410,6 +444,7 @@ void GPUParticles3D::set_sub_emitter(const NodePath &p_path) {
 	if (is_inside_tree() && sub_emitter != NodePath()) {
 		_attach_sub_emitter();
 	}
+	update_configuration_warnings();
 }
 
 NodePath GPUParticles3D::get_sub_emitter() const {
@@ -418,21 +453,26 @@ NodePath GPUParticles3D::get_sub_emitter() const {
 
 void GPUParticles3D::_notification(int p_what) {
 	switch (p_what) {
-		case NOTIFICATION_PAUSED:
-		case NOTIFICATION_UNPAUSED: {
-			if (can_process()) {
-				RS::get_singleton()->particles_set_speed_scale(particles, speed_scale);
-			} else {
-				RS::get_singleton()->particles_set_speed_scale(particles, 0);
-			}
-		} break;
-
 		// Use internal process when emitting and one_shot is on so that when
 		// the shot ends the editor can properly update.
 		case NOTIFICATION_INTERNAL_PROCESS: {
-			if (one_shot && !is_emitting()) {
-				notify_property_list_changed();
-				set_process_internal(false);
+			if (one_shot) {
+				time += get_process_delta_time();
+				if (time > emission_time) {
+					emitting = false;
+					if (!active) {
+						set_process_internal(false);
+					}
+				}
+				if (time > active_time) {
+					if (active && !signal_canceled) {
+						emit_signal(SceneStringNames::get_singleton()->finished);
+					}
+					active = false;
+					if (!emitting) {
+						set_process_internal(false);
+					}
+				}
 			}
 		} break;
 
@@ -440,10 +480,26 @@ void GPUParticles3D::_notification(int p_what) {
 			if (sub_emitter != NodePath()) {
 				_attach_sub_emitter();
 			}
+			if (can_process()) {
+				RS::get_singleton()->particles_set_speed_scale(particles, speed_scale);
+			} else {
+				RS::get_singleton()->particles_set_speed_scale(particles, 0);
+			}
 		} break;
 
 		case NOTIFICATION_EXIT_TREE: {
 			RS::get_singleton()->particles_set_subemitter(particles, RID());
+		} break;
+
+		case NOTIFICATION_PAUSED:
+		case NOTIFICATION_UNPAUSED: {
+			if (is_inside_tree()) {
+				if (can_process()) {
+					RS::get_singleton()->particles_set_speed_scale(particles, speed_scale);
+				} else {
+					RS::get_singleton()->particles_set_speed_scale(particles, 0);
+				}
+			}
 		} break;
 
 		case NOTIFICATION_VISIBILITY_CHANGED: {
@@ -493,8 +549,96 @@ void GPUParticles3D::set_transform_align(TransformAlign p_align) {
 	transform_align = p_align;
 	RS::get_singleton()->particles_set_transform_align(particles, RS::ParticlesTransformAlign(transform_align));
 }
+
 GPUParticles3D::TransformAlign GPUParticles3D::get_transform_align() const {
 	return transform_align;
+}
+
+void GPUParticles3D::convert_from_particles(Node *p_particles) {
+	CPUParticles3D *cpu_particles = Object::cast_to<CPUParticles3D>(p_particles);
+	ERR_FAIL_NULL_MSG(cpu_particles, "Only CPUParticles3D nodes can be converted to GPUParticles3D.");
+
+	set_emitting(cpu_particles->is_emitting());
+	set_amount(cpu_particles->get_amount());
+	set_lifetime(cpu_particles->get_lifetime());
+	set_one_shot(cpu_particles->get_one_shot());
+	set_pre_process_time(cpu_particles->get_pre_process_time());
+	set_explosiveness_ratio(cpu_particles->get_explosiveness_ratio());
+	set_randomness_ratio(cpu_particles->get_randomness_ratio());
+	set_use_local_coordinates(cpu_particles->get_use_local_coordinates());
+	set_fixed_fps(cpu_particles->get_fixed_fps());
+	set_fractional_delta(cpu_particles->get_fractional_delta());
+	set_speed_scale(cpu_particles->get_speed_scale());
+	set_draw_order(DrawOrder(cpu_particles->get_draw_order()));
+	set_draw_pass_mesh(0, cpu_particles->get_mesh());
+
+	Ref<ParticleProcessMaterial> proc_mat = memnew(ParticleProcessMaterial);
+	set_process_material(proc_mat);
+
+	proc_mat->set_direction(cpu_particles->get_direction());
+	proc_mat->set_spread(cpu_particles->get_spread());
+	proc_mat->set_flatness(cpu_particles->get_flatness());
+	proc_mat->set_color(cpu_particles->get_color());
+
+	Ref<Gradient> grad = cpu_particles->get_color_ramp();
+	if (grad.is_valid()) {
+		Ref<GradientTexture1D> tex = memnew(GradientTexture1D);
+		tex->set_gradient(grad);
+		proc_mat->set_color_ramp(tex);
+	}
+
+	Ref<Gradient> grad_init = cpu_particles->get_color_initial_ramp();
+	if (grad_init.is_valid()) {
+		Ref<GradientTexture1D> tex = memnew(GradientTexture1D);
+		tex->set_gradient(grad_init);
+		proc_mat->set_color_initial_ramp(tex);
+	}
+
+	proc_mat->set_particle_flag(ParticleProcessMaterial::PARTICLE_FLAG_ALIGN_Y_TO_VELOCITY, cpu_particles->get_particle_flag(CPUParticles3D::PARTICLE_FLAG_ALIGN_Y_TO_VELOCITY));
+	proc_mat->set_particle_flag(ParticleProcessMaterial::PARTICLE_FLAG_ROTATE_Y, cpu_particles->get_particle_flag(CPUParticles3D::PARTICLE_FLAG_ROTATE_Y));
+	proc_mat->set_particle_flag(ParticleProcessMaterial::PARTICLE_FLAG_DISABLE_Z, cpu_particles->get_particle_flag(CPUParticles3D::PARTICLE_FLAG_DISABLE_Z));
+
+	proc_mat->set_emission_shape(ParticleProcessMaterial::EmissionShape(cpu_particles->get_emission_shape()));
+	proc_mat->set_emission_sphere_radius(cpu_particles->get_emission_sphere_radius());
+	proc_mat->set_emission_box_extents(cpu_particles->get_emission_box_extents());
+
+	if (cpu_particles->get_split_scale()) {
+		Ref<CurveXYZTexture> scale3D = memnew(CurveXYZTexture);
+		scale3D->set_curve_x(cpu_particles->get_scale_curve_x());
+		scale3D->set_curve_y(cpu_particles->get_scale_curve_y());
+		scale3D->set_curve_z(cpu_particles->get_scale_curve_z());
+		proc_mat->set_param_texture(ParticleProcessMaterial::PARAM_SCALE, scale3D);
+	}
+
+	proc_mat->set_gravity(cpu_particles->get_gravity());
+	proc_mat->set_lifetime_randomness(cpu_particles->get_lifetime_randomness());
+
+#define CONVERT_PARAM(m_param)                                                                                        \
+	proc_mat->set_param_min(ParticleProcessMaterial::m_param, cpu_particles->get_param_min(CPUParticles3D::m_param)); \
+	{                                                                                                                 \
+		Ref<Curve> curve = cpu_particles->get_param_curve(CPUParticles3D::m_param);                                   \
+		if (curve.is_valid()) {                                                                                       \
+			Ref<CurveTexture> tex = memnew(CurveTexture);                                                             \
+			tex->set_curve(curve);                                                                                    \
+			proc_mat->set_param_texture(ParticleProcessMaterial::m_param, tex);                                       \
+		}                                                                                                             \
+	}                                                                                                                 \
+	proc_mat->set_param_max(ParticleProcessMaterial::m_param, cpu_particles->get_param_max(CPUParticles3D::m_param));
+
+	CONVERT_PARAM(PARAM_INITIAL_LINEAR_VELOCITY);
+	CONVERT_PARAM(PARAM_ANGULAR_VELOCITY);
+	CONVERT_PARAM(PARAM_ORBIT_VELOCITY);
+	CONVERT_PARAM(PARAM_LINEAR_ACCEL);
+	CONVERT_PARAM(PARAM_RADIAL_ACCEL);
+	CONVERT_PARAM(PARAM_TANGENTIAL_ACCEL);
+	CONVERT_PARAM(PARAM_DAMPING);
+	CONVERT_PARAM(PARAM_ANGLE);
+	CONVERT_PARAM(PARAM_SCALE);
+	CONVERT_PARAM(PARAM_HUE_VARIATION);
+	CONVERT_PARAM(PARAM_ANIM_SPEED);
+	CONVERT_PARAM(PARAM_ANIM_OFFSET);
+
+#undef CONVERT_PARAM
 }
 
 void GPUParticles3D::_bind_methods() {
@@ -552,13 +696,17 @@ void GPUParticles3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("emit_particle", "xform", "velocity", "color", "custom", "flags"), &GPUParticles3D::emit_particle);
 
 	ClassDB::bind_method(D_METHOD("set_trail_enabled", "enabled"), &GPUParticles3D::set_trail_enabled);
-	ClassDB::bind_method(D_METHOD("set_trail_length", "secs"), &GPUParticles3D::set_trail_length);
+	ClassDB::bind_method(D_METHOD("set_trail_lifetime", "secs"), &GPUParticles3D::set_trail_lifetime);
 
 	ClassDB::bind_method(D_METHOD("is_trail_enabled"), &GPUParticles3D::is_trail_enabled);
-	ClassDB::bind_method(D_METHOD("get_trail_length"), &GPUParticles3D::get_trail_length);
+	ClassDB::bind_method(D_METHOD("get_trail_lifetime"), &GPUParticles3D::get_trail_lifetime);
 
 	ClassDB::bind_method(D_METHOD("set_transform_align", "align"), &GPUParticles3D::set_transform_align);
 	ClassDB::bind_method(D_METHOD("get_transform_align"), &GPUParticles3D::get_transform_align);
+
+	ClassDB::bind_method(D_METHOD("convert_from_particles", "particles"), &GPUParticles3D::convert_from_particles);
+
+	ADD_SIGNAL(MethodInfo("finished"));
 
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "emitting"), "set_emitting", "is_emitting");
 	ADD_PROPERTY_DEFAULT("emitting", true); // Workaround for doctool in headless mode, as dummy rasterizer always returns false.
@@ -583,7 +731,7 @@ void GPUParticles3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "transform_align", PROPERTY_HINT_ENUM, "Disabled,Z-Billboard,Y to Velocity,Z-Billboard + Y to Velocity"), "set_transform_align", "get_transform_align");
 	ADD_GROUP("Trails", "trail_");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "trail_enabled"), "set_trail_enabled", "is_trail_enabled");
-	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "trail_length_secs", PROPERTY_HINT_RANGE, "0.01,10,0.01,suffix:s"), "set_trail_length", "get_trail_length");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "trail_lifetime", PROPERTY_HINT_RANGE, "0.01,10,0.01,or_greater,suffix:s"), "set_trail_lifetime", "get_trail_lifetime");
 	ADD_GROUP("Process Material", "");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "process_material", PROPERTY_HINT_RESOURCE_TYPE, "ShaderMaterial,ParticleProcessMaterial"), "set_process_material", "get_process_material");
 	ADD_GROUP("Draw Passes", "draw_");
@@ -627,7 +775,7 @@ GPUParticles3D::GPUParticles3D() {
 	set_pre_process_time(0);
 	set_explosiveness_ratio(0);
 	set_randomness_ratio(0);
-	set_trail_length(0.3);
+	set_trail_lifetime(0.3);
 	set_visibility_aabb(AABB(Vector3(-4, -4, -4), Vector3(8, 8, 8)));
 	set_use_local_coordinates(false);
 	set_draw_passes(1);
@@ -638,5 +786,6 @@ GPUParticles3D::GPUParticles3D() {
 }
 
 GPUParticles3D::~GPUParticles3D() {
+	ERR_FAIL_NULL(RenderingServer::get_singleton());
 	RS::get_singleton()->free(particles);
 }

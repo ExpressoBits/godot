@@ -1,36 +1,37 @@
-/*************************************************************************/
-/*  particle_process_material.cpp                                        */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  particle_process_material.cpp                                         */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "particle_process_material.h"
 
 #include "core/version.h"
+#include "scene/resources/curve_texture.h"
 
 Mutex ParticleProcessMaterial::material_mutex;
 SelfList<ParticleProcessMaterial>::List *ParticleProcessMaterial::dirty_materials = nullptr;
@@ -115,6 +116,7 @@ void ParticleProcessMaterial::init_shaders() {
 
 	shader_names->sub_emitter_frequency = "sub_emitter_frequency";
 	shader_names->sub_emitter_amount_at_end = "sub_emitter_amount_at_end";
+	shader_names->sub_emitter_amount_at_collision = "sub_emitter_amount_at_collision";
 	shader_names->sub_emitter_keep_velocity = "sub_emitter_keep_velocity";
 
 	shader_names->collision_friction = "collision_friction";
@@ -228,12 +230,15 @@ void ParticleProcessMaterial::_update_shader() {
 		}
 	}
 
-	if (sub_emitter_mode != SUB_EMITTER_DISABLED) {
+	if (sub_emitter_mode != SUB_EMITTER_DISABLED && !RenderingServer::get_singleton()->is_low_end()) {
 		if (sub_emitter_mode == SUB_EMITTER_CONSTANT) {
 			code += "uniform float sub_emitter_frequency;\n";
 		}
 		if (sub_emitter_mode == SUB_EMITTER_AT_END) {
 			code += "uniform int sub_emitter_amount_at_end;\n";
+		}
+		if (sub_emitter_mode == SUB_EMITTER_AT_COLLISION) {
+			code += "uniform int sub_emitter_amount_at_collision;\n";
 		}
 		code += "uniform bool sub_emitter_keep_velocity;\n";
 	}
@@ -311,53 +316,76 @@ void ParticleProcessMaterial::_update_shader() {
 
 		//functions for 3D noise / turbulence
 		code += "\n\n";
-		code += "// 3D Noise with friendly permission by Inigo Quilez\n";
-		code += "vec3 hash_noise( vec3 p ) {\n";
-		code += "	p *= mat3(vec3(127.1, 311.7, -53.7), vec3(269.5, 183.3, 77.1), vec3(-301.7, 27.3, 215.3));\n";
-		code += "	return 2.0 * fract(fract(p)*4375.55) -1.;\n";
+		code += "vec4 grad(vec4 p) {\n";
+		code += "	p = fract(vec4(\n";
+		code += "		dot(p, vec4(0.143081, 0.001724, 0.280166, 0.262771)),\n";
+		code += "		dot(p, vec4(0.645401, -0.047791, -0.146698, 0.595016)),\n";
+		code += "		dot(p, vec4(-0.499665, -0.095734, 0.425674, -0.207367)),\n";
+		code += "		dot(p, vec4(-0.013596, -0.848588, 0.423736, 0.17044))));\n";
+		code += "	return fract((p.xyzw * p.yzwx) * 2365.952041) * 2.0 - 1.0;\n";
 		code += "}\n";
-		code += "\n";
-		code += "float noise( vec3 p) {\n";
-		code += "	vec3 i = floor(p);;\n";
-		code += "	vec3 f = fract(p);\n ";
-		code += "	vec3 u = f * f * (3.0 - 2.0 * f);\n";
-		code += "\n";
-		code += "	return 2.0*mix( mix( mix( dot( hash_noise( i + vec3(0.0,0.0,0.0) ), f - vec3(0.0,0.0,0.0) ), dot( hash_noise( i + vec3(1.0,0.0,0.0) ), f - vec3(1.0,0.0,0.0) ), u.x),\n";
-		code += "			mix( dot( hash_noise( i + vec3(0.0,1.0,0.0) ), f - vec3(0.0,1.0,0.0) ), dot( hash_noise( i + vec3(1.0,1.0,0.0) ), f - vec3(1.0,1.0,0.0) ), u.x), u.y),\n";
-		code += "		mix( mix( dot( hash_noise( i + vec3(0.0,0.0,1.0) ), f - vec3(0.0,0.0,1.0) ), dot( hash_noise( i + vec3(1.0,0.0,1.0) ), f - vec3(1.0,0.0,1.0) ), u.x),\n";
-		code += "			mix( dot( hash_noise( i + vec3(0.0,1.0,1.0) ), f - vec3(0.0,1.0,1.0) ), dot( hash_noise( i + vec3(1.0,1.0,1.0) ), f - vec3(1.0,1.0,1.0) ), u.x), u.y), u.z);\n";
+		code += "float noise(vec4 coord) {\n";
+		code += "	// Domain rotation to improve the look of XYZ slices + animation patterns.\n";
+		code += "	coord = vec4(\n";
+		code += "		coord.xyz + dot(coord, vec4(vec3(-0.1666667), -0.5)),\n";
+		code += "		dot(coord, vec4(0.5)));\n\n";
+		code += "	vec4 base = floor(coord), delta = coord - base;\n\n";
+		code += "	vec4 grad_0000 = grad(base + vec4(0.0, 0.0, 0.0, 0.0)), grad_1000 = grad(base + vec4(1.0, 0.0, 0.0, 0.0));\n";
+		code += "	vec4 grad_0100 = grad(base + vec4(0.0, 1.0, 0.0, 0.0)), grad_1100 = grad(base + vec4(1.0, 1.0, 0.0, 0.0));\n";
+		code += "	vec4 grad_0010 = grad(base + vec4(0.0, 0.0, 1.0, 0.0)), grad_1010 = grad(base + vec4(1.0, 0.0, 1.0, 0.0));\n";
+		code += "	vec4 grad_0110 = grad(base + vec4(0.0, 1.0, 1.0, 0.0)), grad_1110 = grad(base + vec4(1.0, 1.0, 1.0, 0.0));\n";
+		code += "	vec4 grad_0001 = grad(base + vec4(0.0, 0.0, 0.0, 1.0)), grad_1001 = grad(base + vec4(1.0, 0.0, 0.0, 1.0));\n";
+		code += "	vec4 grad_0101 = grad(base + vec4(0.0, 1.0, 0.0, 1.0)), grad_1101 = grad(base + vec4(1.0, 1.0, 0.0, 1.0));\n";
+		code += "	vec4 grad_0011 = grad(base + vec4(0.0, 0.0, 1.0, 1.0)), grad_1011 = grad(base + vec4(1.0, 0.0, 1.0, 1.0));\n";
+		code += "	vec4 grad_0111 = grad(base + vec4(0.0, 1.0, 1.0, 1.0)), grad_1111 = grad(base + vec4(1.0, 1.0, 1.0, 1.0));\n\n";
+		code += "	vec4 result_0123 = vec4(\n";
+		code += "		dot(delta - vec4(0.0, 0.0, 0.0, 0.0), grad_0000), dot(delta - vec4(1.0, 0.0, 0.0, 0.0), grad_1000),\n";
+		code += "		dot(delta - vec4(0.0, 1.0, 0.0, 0.0), grad_0100), dot(delta - vec4(1.0, 1.0, 0.0, 0.0), grad_1100));\n";
+		code += "	vec4 result_4567 = vec4(\n";
+		code += "		dot(delta - vec4(0.0, 0.0, 1.0, 0.0), grad_0010), dot(delta - vec4(1.0, 0.0, 1.0, 0.0), grad_1010),\n";
+		code += "		dot(delta - vec4(0.0, 1.0, 1.0, 0.0), grad_0110), dot(delta - vec4(1.0, 1.0, 1.0, 0.0), grad_1110));\n";
+		code += "	vec4 result_89AB = vec4(\n";
+		code += "		dot(delta - vec4(0.0, 0.0, 0.0, 1.0), grad_0001), dot(delta - vec4(1.0, 0.0, 0.0, 1.0), grad_1001),\n";
+		code += "		dot(delta - vec4(0.0, 1.0, 0.0, 1.0), grad_0101), dot(delta - vec4(1.0, 1.0, 0.0, 1.0), grad_1101));\n";
+		code += "	vec4 result_CDEF = vec4(\n";
+		code += "		dot(delta - vec4(0.0, 0.0, 1.0, 1.0), grad_0011), dot(delta - vec4(1.0, 0.0, 1.0, 1.0), grad_1011),\n";
+		code += "		dot(delta - vec4(0.0, 1.0, 1.0, 1.0), grad_0111), dot(delta - vec4(1.0, 1.0, 1.0, 1.0), grad_1111));\n\n";
+		code += "	vec4 fade = delta * delta * delta * (10.0 + delta * (-15.0 + delta * 6.0));\n";
+		code += "	vec4 result_W0 = mix(result_0123, result_89AB, fade.w), result_W1 = mix(result_4567, result_CDEF, fade.w);\n";
+		code += "	vec4 result_WZ = mix(result_W0, result_W1, fade.z);\n";
+		code += "	vec2 result_WZY = mix(result_WZ.xy, result_WZ.zw, fade.y);\n";
+		code += "	return mix(result_WZY.x, result_WZY.y, fade.x);\n";
 		code += "}\n\n";
-		code += "// Curl 3D and noise_3d function with friendly permission by Isaac Cohen\n";
-		code += "vec3 noise_3d(vec3 p) {\n";
+		code += "// Curl 3D and three-noise function with friendly permission by Isaac Cohen.\n";
+		code += "// Modified to accept 4D noise.\n";
+		code += "vec3 noise_3x(vec4 p) {\n";
 		code += "	float s = noise(p);\n";
-		code += "	float s1 = noise(vec3(p.y - 19.1, p.z + 33.4, p.x + 47.2));\n";
-		code += "   float s2 = noise(vec3(p.z + 74.2, p.x - 124.5, p.y + 99.4));\n";
+		code += "	float s1 = noise(p + vec4(vec3(0.0), 1.7320508 * 2048.333333));\n";
+		code += "	float s2 = noise(p - vec4(vec3(0.0), 1.7320508 * 2048.333333));\n";
 		code += "	vec3 c = vec3(s, s1, s2);\n";
 		code += "	return c;\n";
-		code += "}\n\n";
-		code += "vec3 curl_3d(vec3 p, float c) {\n";
-		code += "	float epsilon = 0.001 + c;\n";
-		code += "	vec3 dx = vec3(epsilon, 0.0, 0.0);\n";
-		code += "	vec3 dy = vec3(0.0, epsilon, 0.0);\n";
-		code += "	vec3 dz = vec3(0.0, 0.0, epsilon);\n";
-		code += "	vec3 x0 = noise_3d(p - dx).xyz;\n";
-		code += "	vec3 x1 = noise_3d(p + dx).xyz;\n";
-		code += "	vec3 y0 = noise_3d(p - dy).xyz;\n";
-		code += "	vec3 y1 = noise_3d(p + dy).xyz;\n";
-		code += "	vec3 z0 = noise_3d(p - dz).xyz;\n";
-		code += "	vec3 z1 = noise_3d(p + dz).xyz;\n";
-		code += "	float x = y1.z - y0.z - z1.y + z0.y;\n";
-		code += "	float y = z1.x - z0.x - x1.z + x0.z;\n";
-		code += "	float z = x1.y - x0.y - y1.x + y0.x;\n";
-		code += "	float divisor = 1.0 / (2.0 * epsilon);\n";
-		code += "	return vec3(normalize(vec3(x, y, z) * divisor));\n";
 		code += "}\n";
-		code += "vec3 get_noise_direction(vec3 pos, vec3 emission_pos, vec3 time_noise) {\n";
+		code += "vec3 curl_3d(vec4 p, float c) {\n";
+		code += "	float epsilon = 0.001 + c;\n";
+		code += "	vec4 dx = vec4(epsilon, 0.0, 0.0, 0.0);\n";
+		code += "	vec4 dy = vec4(0.0, epsilon, 0.0, 0.0);\n";
+		code += "	vec4 dz = vec4(0.0, 0.0, epsilon, 0.0);\n";
+		code += "	vec3 x0 = noise_3x(p - dx).xyz;\n";
+		code += "	vec3 x1 = noise_3x(p + dx).xyz;\n";
+		code += "	vec3 y0 = noise_3x(p - dy).xyz;\n";
+		code += "	vec3 y1 = noise_3x(p + dy).xyz;\n";
+		code += "	vec3 z0 = noise_3x(p - dz).xyz;\n";
+		code += "	vec3 z1 = noise_3x(p + dz).xyz;\n";
+		code += "	float x = (y1.z - y0.z) - (z1.y - z0.y);\n";
+		code += "	float y = (z1.x - z0.x) - (x1.z - x0.z);\n";
+		code += "	float z = (x1.y - x0.y) - (y1.x - y0.x);\n";
+		code += "	return normalize(vec3(x, y, z));\n";
+		code += "}\n";
+		code += "vec3 get_noise_direction(vec3 pos) {\n";
 		code += "	float adj_contrast = max((turbulence_noise_strength - 1.0), 0.0) * 70.0;\n";
-		code += "	vec3 noise_time = (vec3(TIME) * turbulence_noise_speed) + time_noise;\n";
-		code += "	vec3 noise_pos = (pos * turbulence_noise_scale) - emission_pos;\n";
-		code += "	vec3 diff = pos - emission_pos;\n";
-		code += "	vec3 noise_direction = curl_3d(noise_pos + noise_time - diff, adj_contrast);\n";
+		code += "	vec4 noise_time = TIME * vec4(turbulence_noise_speed, turbulence_noise_speed_random);\n";
+		code += "	vec4 noise_pos = vec4(pos * turbulence_noise_scale, 0.0);\n";
+		code += "	vec3 noise_direction = curl_3d(noise_pos + noise_time, adj_contrast);\n";
 		code += "	noise_direction = mix(0.9 * noise_direction, noise_direction, turbulence_noise_strength - 9.0);\n";
 		code += "	return noise_direction;\n";
 		code += "}\n";
@@ -415,7 +443,7 @@ void ParticleProcessMaterial::_update_shader() {
 	if (tex_parameters[PARAM_ANGLE].is_valid()) {
 		code += "	float tex_angle = textureLod(angle_texture, vec2(0.0, 0.0), 0.0).r;\n";
 	} else {
-		code += "	float tex_angle = 0.0;\n";
+		code += "	float tex_angle = 1.0;\n";
 	}
 
 	if (tex_parameters[PARAM_ANIM_OFFSET].is_valid()) {
@@ -470,14 +498,20 @@ void ParticleProcessMaterial::_update_shader() {
 	code += "	CUSTOM.x = base_angle * degree_to_rad;\n"; // angle
 	code += "	CUSTOM.y = 0.0;\n"; // phase
 	code += "	CUSTOM.w = (1.0 - lifetime_randomness * rand_from_seed(alt_seed));\n";
-	code += "	CUSTOM.z = (tex_anim_offset) * mix(anim_offset_min, anim_offset_max, anim_offset_rand);\n"; // animation offset (0-1)
+	code += "	CUSTOM.z = (tex_anim_offset) * mix(anim_offset_min, anim_offset_max, anim_offset_rand);\n\n"; // animation offset (0-1)
+
+	code += "	if (RESTART_ROT_SCALE) {\n";
+	code += "		TRANSFORM[0].xyz = vec3(1.0, 0.0, 0.0);\n";
+	code += "		TRANSFORM[1].xyz = vec3(0.0, 1.0, 0.0);\n";
+	code += "		TRANSFORM[2].xyz = vec3(0.0, 0.0, 1.0);\n";
+	code += "	}\n\n";
 
 	code += "	if (RESTART_POSITION) {\n";
 
 	switch (emission_shape) {
 		case EMISSION_SHAPE_POINT: {
 			//do none, identity (will later be multiplied by emission transform)
-			code += "		TRANSFORM = mat4(vec4(1,0,0,0),vec4(0,1,0,0),vec4(0,0,1,0),vec4(0,0,0,1));\n";
+			code += "		TRANSFORM[3].xyz = vec3(0.0, 0.0, 0.0);\n";
 		} break;
 		case EMISSION_SHAPE_SPHERE: {
 			code += "		float s = rand_from_seed(alt_seed) * 2.0 - 1.0;\n";
@@ -547,12 +581,7 @@ void ParticleProcessMaterial::_update_shader() {
 	code += "	if (RESTART_VELOCITY) VELOCITY = (EMISSION_TRANSFORM * vec4(VELOCITY, 0.0)).xyz;\n";
 	// Apply noise/turbulence: initial displacement.
 	if (turbulence_enabled) {
-		if (get_turbulence_noise_speed_random() >= 0.0) {
-			code += "	vec3 time_noise = noise_3d( vec3(TIME) * turbulence_noise_speed_random ) * -turbulence_noise_speed;\n";
-		} else {
-			code += "	const vec3 time_noise = vec3(0.0);\n";
-		}
-		code += "	vec3 noise_direction = get_noise_direction(TRANSFORM[3].xyz, EMISSION_TRANSFORM[3].xyz, time_noise);\n";
+		code += "	vec3 noise_direction = get_noise_direction(TRANSFORM[3].xyz);\n";
 		code += "	float turb_init_displacement = mix(turbulence_initial_displacement_min, turbulence_initial_displacement_max, rand_from_seed(alt_seed));";
 		code += "	TRANSFORM[3].xyz += noise_direction * turb_init_displacement;\n";
 	}
@@ -654,11 +683,13 @@ void ParticleProcessMaterial::_update_shader() {
 		code += "	pos.z = 0.0;\n";
 	}
 	code += "	// apply linear acceleration\n";
-	code += "	force += length(VELOCITY) > 0.0 ? normalize(VELOCITY) * tex_linear_accel * mix(linear_accel_min, linear_accel_max, rand_from_seed(alt_seed)) : vec3(0.0);\n";
+	code += "	float linear_accel_rand = rand_from_seed(alt_seed);\n";
+	code += "	force += length(VELOCITY) > 0.0 ? normalize(VELOCITY) * tex_linear_accel * mix(linear_accel_min, linear_accel_max, linear_accel_rand) : vec3(0.0);\n";
 	code += "	// apply radial acceleration\n";
 	code += "	vec3 org = EMISSION_TRANSFORM[3].xyz;\n";
 	code += "	vec3 diff = pos - org;\n";
-	code += "	force += length(diff) > 0.0 ? normalize(diff) * tex_radial_accel * mix(radial_accel_min, radial_accel_max, rand_from_seed(alt_seed)) : vec3(0.0);\n";
+	code += "	float radial_accel_rand = rand_from_seed(alt_seed);\n";
+	code += "	force += length(diff) > 0.0 ? normalize(diff) * tex_radial_accel * mix(radial_accel_min, radial_accel_max, radial_accel_rand) : vec3(0.0);\n";
 	code += "	// apply tangential acceleration;\n";
 	code += "	float tangent_accel_val = tex_tangent_accel * mix(tangent_accel_min, tangent_accel_max, rand_from_seed(alt_seed));\n";
 	if (particle_flags[PARTICLE_FLAG_DISABLE_Z]) {
@@ -688,12 +719,7 @@ void ParticleProcessMaterial::_update_shader() {
 			code += "	const float turbulence_influence = 1.0;\n";
 		}
 		code += "	\n";
-		if (get_turbulence_noise_speed_random() >= 0.0) {
-			code += "	vec3 time_noise = noise_3d( vec3(TIME) * turbulence_noise_speed_random ) * -turbulence_noise_speed;\n";
-		} else {
-			code += "	const vec3 time_noise = vec3(0.0);\n";
-		}
-		code += "	vec3 noise_direction = get_noise_direction(TRANSFORM[3].xyz, EMISSION_TRANSFORM[3].xyz, time_noise);\n";
+		code += "	vec3 noise_direction = get_noise_direction(TRANSFORM[3].xyz);\n";
 		// If collision happened, turbulence is no longer applied.
 		// We don't need this check when the collision mode is "hide on contact",
 		// as the particle will be hidden anyway.
@@ -733,10 +759,10 @@ void ParticleProcessMaterial::_update_shader() {
 	code += "			VELOCITY = normalize(VELOCITY) * v;\n";
 	code += "		}\n";
 	code += "	}\n";
-	code += "	float base_angle = (tex_angle) * mix(initial_angle_min, initial_angle_max, rand_from_seed(alt_seed));\n";
+	code += "	float base_angle = (tex_angle) * mix(initial_angle_min, initial_angle_max, angle_rand);\n";
 	code += "	base_angle += CUSTOM.y * LIFETIME * (tex_angular_velocity) * mix(angular_velocity_min,angular_velocity_max, rand_from_seed(alt_seed));\n";
 	code += "	CUSTOM.x = base_angle * degree_to_rad;\n"; // angle
-	code += "	CUSTOM.z = (tex_anim_offset) * mix(anim_offset_min, anim_offset_max, rand_from_seed(alt_seed)) + tv * tex_anim_speed * mix(anim_speed_min, anim_speed_max, rand_from_seed(alt_seed));\n"; // angle
+	code += "	CUSTOM.z = (tex_anim_offset) * mix(anim_offset_min, anim_offset_max, anim_offset_rand) + tv * tex_anim_speed * mix(anim_speed_min, anim_speed_max, rand_from_seed(alt_seed));\n"; // angle
 
 	// apply color
 	// apply hue rotation
@@ -830,6 +856,13 @@ void ParticleProcessMaterial::_update_shader() {
 		code += "	TRANSFORM[3].z = 0.0;\n";
 	}
 
+	// scale by scale
+	code += "	float base_scale = mix(scale_min, scale_max, scale_rand);\n";
+	code += "	base_scale = sign(base_scale) * max(abs(base_scale), 0.001);\n";
+	code += "	TRANSFORM[0].xyz *= base_scale * sign(tex_scale.r) * max(abs(tex_scale.r), 0.001);\n";
+	code += "	TRANSFORM[1].xyz *= base_scale * sign(tex_scale.g) * max(abs(tex_scale.g), 0.001);\n";
+	code += "	TRANSFORM[2].xyz *= base_scale * sign(tex_scale.b) * max(abs(tex_scale.b), 0.001);\n";
+
 	if (collision_mode == COLLISION_RIGID) {
 		code += "	if (COLLIDED) {\n";
 		code += "		if (length(VELOCITY) > 3.0) {\n";
@@ -844,28 +877,13 @@ void ParticleProcessMaterial::_update_shader() {
 		}
 		code += "		}\n";
 		code += "	}\n";
-	}
-
-	// scale by scale
-	code += "	float base_scale = mix(scale_min, scale_max, scale_rand);\n";
-	code += "	base_scale = sign(base_scale) * max(abs(base_scale), 0.001);\n";
-	code += "	TRANSFORM[0].xyz *= base_scale * sign(tex_scale.r) * max(abs(tex_scale.r), 0.001);\n";
-	code += "	TRANSFORM[1].xyz *= base_scale * sign(tex_scale.g) * max(abs(tex_scale.g), 0.001);\n";
-	code += "	TRANSFORM[2].xyz *= base_scale * sign(tex_scale.b) * max(abs(tex_scale.b), 0.001);\n";
-
-	if (collision_mode == COLLISION_RIGID) {
-		code += "	if (COLLIDED) {\n";
-		code += "		TRANSFORM[3].xyz+=COLLISION_NORMAL * COLLISION_DEPTH;\n";
-		code += "		VELOCITY -= COLLISION_NORMAL * dot(COLLISION_NORMAL, VELOCITY) * (1.0 + collision_bounce);\n";
-		code += "		VELOCITY = mix(VELOCITY,vec3(0.0),collision_friction * DELTA * 100.0);\n";
-		code += "	}\n";
 	} else if (collision_mode == COLLISION_HIDE_ON_CONTACT) {
 		code += "	if (COLLIDED) {\n";
 		code += "		ACTIVE = false;\n";
 		code += "	}\n";
 	}
 
-	if (sub_emitter_mode != SUB_EMITTER_DISABLED) {
+	if (sub_emitter_mode != SUB_EMITTER_DISABLED && !RenderingServer::get_singleton()->is_low_end()) {
 		code += "	int emit_count = 0;\n";
 		switch (sub_emitter_mode) {
 			case SUB_EMITTER_CONSTANT: {
@@ -874,7 +892,7 @@ void ParticleProcessMaterial::_update_shader() {
 				code += "	if (DELTA >= interval_rem) emit_count = 1;\n";
 			} break;
 			case SUB_EMITTER_AT_COLLISION: {
-				code += "	if (COLLIDED) emit_count = 1;\n";
+				code += "	if (COLLIDED) emit_count = sub_emitter_amount_at_collision;\n";
 			} break;
 			case SUB_EMITTER_AT_END: {
 				code += "	float unit_delta = DELTA/LIFETIME;\n";
@@ -919,7 +937,7 @@ void ParticleProcessMaterial::flush_changes() {
 void ParticleProcessMaterial::_queue_shader_change() {
 	MutexLock lock(material_mutex);
 
-	if (is_initialized && !element.in_list()) {
+	if (_is_initialized() && !element.in_list()) {
 		dirty_materials->add(&element);
 	}
 }
@@ -1347,7 +1365,11 @@ float ParticleProcessMaterial::get_turbulence_noise_strength() const {
 
 void ParticleProcessMaterial::set_turbulence_noise_scale(float p_turbulence_noise_scale) {
 	turbulence_noise_scale = p_turbulence_noise_scale;
-	float shader_turbulence_noise_scale = (pow(p_turbulence_noise_scale, 0.25) * 5.6234 / 10.0) * 4.0 - 3.0;
+	const float noise_frequency_when_slider_is_zero = 4.0;
+	const float max_slider_value = 10.0;
+	const float curve_exponent = 0.25;
+	const float curve_rescale = noise_frequency_when_slider_is_zero / pow(max_slider_value, curve_exponent);
+	float shader_turbulence_noise_scale = pow(p_turbulence_noise_scale, curve_exponent) * curve_rescale - noise_frequency_when_slider_is_zero;
 	RenderingServer::get_singleton()->material_set_param(_get_material(), shader_names->turbulence_noise_scale, shader_turbulence_noise_scale);
 }
 
@@ -1433,6 +1455,10 @@ void ParticleProcessMaterial::_validate_property(PropertyInfo &p_property) const
 		p_property.usage = PROPERTY_USAGE_NONE;
 	}
 
+	if (p_property.name == "sub_emitter_amount_at_collision" && sub_emitter_mode != SUB_EMITTER_AT_COLLISION) {
+		p_property.usage = PROPERTY_USAGE_NONE;
+	}
+
 	if (p_property.name.begins_with("orbit_") && !particle_flags[PARTICLE_FLAG_DISABLE_Z]) {
 		p_property.usage = PROPERTY_USAGE_NONE;
 	}
@@ -1464,6 +1490,9 @@ void ParticleProcessMaterial::set_sub_emitter_mode(SubEmitterMode p_sub_emitter_
 	sub_emitter_mode = p_sub_emitter_mode;
 	_queue_shader_change();
 	notify_property_list_changed();
+	if (sub_emitter_mode != SUB_EMITTER_DISABLED && RenderingServer::get_singleton()->is_low_end()) {
+		WARN_PRINT_ONCE_ED("Sub-emitter modes other than SUB_EMITTER_DISABLED are not supported in the GL Compatibility rendering backend.");
+	}
 }
 
 ParticleProcessMaterial::SubEmitterMode ParticleProcessMaterial::get_sub_emitter_mode() const {
@@ -1486,6 +1515,15 @@ void ParticleProcessMaterial::set_sub_emitter_amount_at_end(int p_amount) {
 
 int ParticleProcessMaterial::get_sub_emitter_amount_at_end() const {
 	return sub_emitter_amount_at_end;
+}
+
+void ParticleProcessMaterial::set_sub_emitter_amount_at_collision(int p_amount) {
+	sub_emitter_amount_at_collision = p_amount;
+	RenderingServer::get_singleton()->material_set_param(_get_material(), shader_names->sub_emitter_amount_at_collision, p_amount);
+}
+
+int ParticleProcessMaterial::get_sub_emitter_amount_at_collision() const {
+	return sub_emitter_amount_at_collision;
 }
 
 void ParticleProcessMaterial::set_sub_emitter_keep_velocity(bool p_enable) {
@@ -1640,6 +1678,9 @@ void ParticleProcessMaterial::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_sub_emitter_amount_at_end"), &ParticleProcessMaterial::get_sub_emitter_amount_at_end);
 	ClassDB::bind_method(D_METHOD("set_sub_emitter_amount_at_end", "amount"), &ParticleProcessMaterial::set_sub_emitter_amount_at_end);
 
+	ClassDB::bind_method(D_METHOD("get_sub_emitter_amount_at_collision"), &ParticleProcessMaterial::get_sub_emitter_amount_at_collision);
+	ClassDB::bind_method(D_METHOD("set_sub_emitter_amount_at_collision", "amount"), &ParticleProcessMaterial::set_sub_emitter_amount_at_collision);
+
 	ClassDB::bind_method(D_METHOD("get_sub_emitter_keep_velocity"), &ParticleProcessMaterial::get_sub_emitter_keep_velocity);
 	ClassDB::bind_method(D_METHOD("set_sub_emitter_keep_velocity", "enable"), &ParticleProcessMaterial::set_sub_emitter_keep_velocity);
 
@@ -1707,8 +1748,8 @@ void ParticleProcessMaterial::_bind_methods() {
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "tangential_accel_max", PROPERTY_HINT_RANGE, "-100,100,0.01,or_less,or_greater"), "set_param_max", "get_param_max", PARAM_TANGENTIAL_ACCEL);
 	ADD_PROPERTYI(PropertyInfo(Variant::OBJECT, "tangential_accel_curve", PROPERTY_HINT_RESOURCE_TYPE, "CurveTexture"), "set_param_texture", "get_param_texture", PARAM_TANGENTIAL_ACCEL);
 	ADD_GROUP("Damping", "");
-	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "damping_min", PROPERTY_HINT_RANGE, "0,100,0.01,or_greater"), "set_param_min", "get_param_min", PARAM_DAMPING);
-	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "damping_max", PROPERTY_HINT_RANGE, "0,100,0.01,or_greater"), "set_param_max", "get_param_max", PARAM_DAMPING);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "damping_min", PROPERTY_HINT_RANGE, "0,100,0.001,or_greater"), "set_param_min", "get_param_min", PARAM_DAMPING);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "damping_max", PROPERTY_HINT_RANGE, "0,100,0.001,or_greater"), "set_param_max", "get_param_max", PARAM_DAMPING);
 	ADD_PROPERTYI(PropertyInfo(Variant::OBJECT, "damping_curve", PROPERTY_HINT_RESOURCE_TYPE, "CurveTexture"), "set_param_texture", "get_param_texture", PARAM_DAMPING);
 	ADD_GROUP("Angle", "");
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "angle_min", PROPERTY_HINT_RANGE, "-720,720,0.1,or_less,or_greater,degrees"), "set_param_min", "get_param_min", PARAM_ANGLE);
@@ -1733,7 +1774,7 @@ void ParticleProcessMaterial::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "turbulence_noise_strength", PROPERTY_HINT_RANGE, "0,20,0.01"), "set_turbulence_noise_strength", "get_turbulence_noise_strength");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "turbulence_noise_scale", PROPERTY_HINT_RANGE, "0,10,0.01"), "set_turbulence_noise_scale", "get_turbulence_noise_scale");
 	ADD_PROPERTY(PropertyInfo(Variant::VECTOR3, "turbulence_noise_speed"), "set_turbulence_noise_speed", "get_turbulence_noise_speed");
-	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "turbulence_noise_speed_random", PROPERTY_HINT_RANGE, "0,10,0.01"), "set_turbulence_noise_speed_random", "get_turbulence_noise_speed_random");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "turbulence_noise_speed_random", PROPERTY_HINT_RANGE, "0,4,0.01"), "set_turbulence_noise_speed_random", "get_turbulence_noise_speed_random");
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "turbulence_influence_min", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_param_min", "get_param_min", PARAM_TURB_VEL_INFLUENCE);
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "turbulence_influence_max", PROPERTY_HINT_RANGE, "0,1,0.01"), "set_param_max", "get_param_max", PARAM_TURB_VEL_INFLUENCE);
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "turbulence_initial_displacement_min", PROPERTY_HINT_RANGE, "-100,100,0.1"), "set_param_min", "get_param_min", PARAM_TURB_INIT_DISPLACEMENT);
@@ -1744,14 +1785,15 @@ void ParticleProcessMaterial::_bind_methods() {
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "anim_speed_min", PROPERTY_HINT_RANGE, "0,16,0.01,or_less,or_greater"), "set_param_min", "get_param_min", PARAM_ANIM_SPEED);
 	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "anim_speed_max", PROPERTY_HINT_RANGE, "0,16,0.01,or_less,or_greater"), "set_param_max", "get_param_max", PARAM_ANIM_SPEED);
 	ADD_PROPERTYI(PropertyInfo(Variant::OBJECT, "anim_speed_curve", PROPERTY_HINT_RESOURCE_TYPE, "CurveTexture"), "set_param_texture", "get_param_texture", PARAM_ANIM_SPEED);
-	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "anim_offset_min", PROPERTY_HINT_RANGE, "0,16,0.01,or_less,or_greater"), "set_param_min", "get_param_min", PARAM_ANIM_OFFSET);
-	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "anim_offset_max", PROPERTY_HINT_RANGE, "0,16,0.01,or_less,or_greater"), "set_param_max", "get_param_max", PARAM_ANIM_OFFSET);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "anim_offset_min", PROPERTY_HINT_RANGE, "0,1,0.0001"), "set_param_min", "get_param_min", PARAM_ANIM_OFFSET);
+	ADD_PROPERTYI(PropertyInfo(Variant::FLOAT, "anim_offset_max", PROPERTY_HINT_RANGE, "0,1,0.0001"), "set_param_max", "get_param_max", PARAM_ANIM_OFFSET);
 	ADD_PROPERTYI(PropertyInfo(Variant::OBJECT, "anim_offset_curve", PROPERTY_HINT_RESOURCE_TYPE, "CurveTexture"), "set_param_texture", "get_param_texture", PARAM_ANIM_OFFSET);
 
 	ADD_GROUP("Sub Emitter", "sub_emitter_");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "sub_emitter_mode", PROPERTY_HINT_ENUM, "Disabled,Constant,At End,At Collision"), "set_sub_emitter_mode", "get_sub_emitter_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "sub_emitter_frequency", PROPERTY_HINT_RANGE, "0.01,100,0.01,suffix:Hz"), "set_sub_emitter_frequency", "get_sub_emitter_frequency");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "sub_emitter_amount_at_end", PROPERTY_HINT_RANGE, "1,32,1"), "set_sub_emitter_amount_at_end", "get_sub_emitter_amount_at_end");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "sub_emitter_amount_at_collision", PROPERTY_HINT_RANGE, "1,32,1"), "set_sub_emitter_amount_at_collision", "get_sub_emitter_amount_at_collision");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "sub_emitter_keep_velocity"), "set_sub_emitter_keep_velocity", "get_sub_emitter_keep_velocity");
 
 	ADD_GROUP("Attractor Interaction", "attractor_interaction_");
@@ -1844,10 +1886,10 @@ ParticleProcessMaterial::ParticleProcessMaterial() :
 	set_emission_ring_inner_radius(0);
 
 	set_turbulence_enabled(false);
-	set_turbulence_noise_speed(Vector3(0.5, 0.5, 0.5));
+	set_turbulence_noise_speed(Vector3(0.0, 0.0, 0.0));
 	set_turbulence_noise_strength(1);
 	set_turbulence_noise_scale(9);
-	set_turbulence_noise_speed_random(0);
+	set_turbulence_noise_speed_random(0.2);
 	set_param_min(PARAM_TURB_VEL_INFLUENCE, 0.1);
 	set_param_max(PARAM_TURB_VEL_INFLUENCE, 0.1);
 	set_param_min(PARAM_TURB_INIT_DISPLACEMENT, 0.0);
@@ -1859,6 +1901,7 @@ ParticleProcessMaterial::ParticleProcessMaterial() :
 	set_sub_emitter_mode(SUB_EMITTER_DISABLED);
 	set_sub_emitter_frequency(4);
 	set_sub_emitter_amount_at_end(1);
+	set_sub_emitter_amount_at_collision(1);
 	set_sub_emitter_keep_velocity(false);
 
 	set_attractor_interaction_enabled(true);
@@ -1875,11 +1918,11 @@ ParticleProcessMaterial::ParticleProcessMaterial() :
 
 	current_key.invalid_key = 1;
 
-	is_initialized = true;
-	_queue_shader_change();
+	_mark_initialized(callable_mp(this, &ParticleProcessMaterial::_queue_shader_change));
 }
 
 ParticleProcessMaterial::~ParticleProcessMaterial() {
+	ERR_FAIL_NULL(RenderingServer::get_singleton());
 	MutexLock lock(material_mutex);
 
 	if (shader_map.has(current_key)) {

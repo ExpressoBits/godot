@@ -43,8 +43,8 @@ Source: https://github.com/godotengine/godot
 
 Files: *
 Comment: Godot Engine
-Copyright: 2007-2022, Juan Linietsky, Ariel Manzur.
- 2014-2022, Godot Engine contributors.
+Copyright: 2014-present, Godot Engine contributors
+ 2007-2014, Juan Linietsky, Ariel Manzur
 License: Expat
 
 Files: ./icon.png
@@ -59,8 +59,8 @@ Files: ./core/math/convex_hull.cpp
  ./core/math/convex_hull.h
 Comment: Bullet Continuous Collision Detection and Physics Library
 Copyright: 2011, Ole Kniemeyer, MAXON, www.maxon.net
- 2007-2022, Juan Linietsky, Ariel Manzur.
- 2014-2022, Godot Engine contributors.
+ 2014-present, Godot Engine contributors
+ 2007-2014, Juan Linietsky, Ariel Manzur
 License: Expat and Zlib
 
 Files: ./platform/android/java/lib/aidl/com/android/*
@@ -81,8 +81,8 @@ License: Apache-2.0
 Files: ./scene/animation/easing_equations.h
 Comment: Robert Penner's Easing Functions
 Copyright: 2001, Robert Penner
- 2007-2022 Juan Linietsky, Ariel Manzur.
- 2014-2022 Godot Engine contributors.
+ 2014-present, Godot Engine contributors
+ 2007-2014, Juan Linietsky, Ariel Manzur
 License: Expat
 
 Files: ./servers/physics_3d/collision_solver_3d_sat.cpp
@@ -106,16 +106,16 @@ Files: ./servers/physics_3d/gjk_epa.cpp
  ./servers/physics_3d/shape_3d_sw.h
 Comment: Bullet Continuous Collision Detection and Physics Library
 Copyright: 2003-2008, Erwin Coumans
- 2007-2022, Juan Linietsky, Ariel Manzur.
- 2014-2022, Godot Engine contributors.
+ 2014-present, Godot Engine contributors
+ 2007-2014, Juan Linietsky, Ariel Manzur
 License: Expat and Zlib
 
 Files: ./servers/physics_3d/joints/cone_twist_joint_3d_sw.cpp
  ./servers/physics_3d/joints/cone_twist_joint_3d_sw.h
 Comment: Bullet Continuous Collision Detection and Physics Library
 Copyright: 2007, Starbreeze Studios
- 2007-2022, Juan Linietsky, Ariel Manzur.
- 2014-2022, Godot Engine contributors.
+ 2014-present, Godot Engine contributors
+ 2007-2014, Juan Linietsky, Ariel Manzur
 License: Expat and Zlib
 
 Files: ./servers/rendering/renderer_rd/shaders/ss_effects_downsample.glsl
@@ -141,6 +141,16 @@ Comment: AMD FidelityFX Super Resolution
 Copyright: 2021, Advanced Micro Devices, Inc.
 License: Expat
 
+Files: ./thirdparty/angle/
+Comment: ANGLE
+Copyright: 2018, The ANGLE Project Authors.
+License: BSD-3-clause
+
+Files: ./thirdparty/astcenc/
+Comment: Arm ASTC Encoder
+Copyright: 2011-2023, Arm Limited
+License: Apache-2.0
+
 Files: ./thirdparty/basis_universal/
 Comment: Basis Universal
 Copyright: 2022, Binomial LLC.
@@ -164,7 +174,7 @@ License: Expat
 
 Files: ./thirdparty/doctest/
 Comment: doctest
-Copyright: 2016-2021, Viktor Kirilov
+Copyright: 2016-2023, Viktor Kirilov
 License: Expat
 
 Files: ./thirdparty/embree/
@@ -199,8 +209,14 @@ License: OFL-1.1
 
 Files: ./thirdparty/freetype/
 Comment: The FreeType Project
-Copyright: 1996-2022, David Turner, Robert Wilhelm, and Werner Lemberg.
+Copyright: 1996-2023, David Turner, Robert Wilhelm, and Werner Lemberg.
 License: FTL
+
+Files: ./thirdparty/glad/
+Comment: glad
+Copyright: 2013-2022, David Herberth
+ 2013-2020, The Khronos Group Inc.
+License: CC0-1.0 and Apache-2.0
 
 Files: ./thirdparty/glslang/
 Comment: glslang
@@ -212,23 +228,27 @@ License: glslang
 Files: ./thirdparty/graphite/
 Comment: Graphite engine
 Copyright: 2010, SIL International
-License: MPL-2.0
+License: Expat
 
 Files: ./thirdparty/harfbuzz/
 Comment: HarfBuzz text shaping library
-Copyright: 2010-2020, Google, Inc.
- 2018-2020, Ebrahim Byagowi
- 2019-2020, Facebook, Inc.
- 2012, Mozilla Foundation
+Copyright: 2010-2022, Google, Inc.
+ 2015-2020, Ebrahim Byagowi
+ 2019,2020, Facebook, Inc.
+ 2012, 2015, Mozilla Foundation
  2011, Codethink Limited
  2008, 2010, Nokia Corporation and/or its subsidiary(-ies)
  2009, Keith Stribley
- 2009, Martin Hosken and SIL International
+ 2011, Martin Hosken and SIL International
  2007, Chris Wilson
- 2005-2006, 2020-2021, Behdad Esfahbod
- 2005, David Turner
- 2004, 2007-2010, Red Hat, Inc.
- 1998-2004, David Turner and Werner Lemberg
+ 2005-2006, 2020-2023, Behdad Esfahbod
+ 2004, 2007-2010, 2013, 2021-2023, Red Hat, Inc.
+ 1998-2005, David Turner and Werner Lemberg
+ 2016, Igalia, S.L.
+ 2022, Matthias Clasen
+ 2018, 2021, Khaled Hosny
+ 2018-2020, Adobe, Inc.
+ 2013-2015, Alexei Podtelezhnikov
 License: HarfBuzz
 
 Files: ./thirdparty/icu4c/
@@ -240,6 +260,12 @@ Files: ./thirdparty/jpeg-compressor/
 Comment: jpeg-compressor
 Copyright: 2012, Rich Geldreich
 License: public-domain or Apache-2.0
+
+Files: ./thirdparty/libktx/
+Comment: KTX
+Copyright: 2013-2020, Mark Callow
+ 2010-2020 The Khronos Group, Inc.
+License: Apache-2.0
 
 Files: ./thirdparty/libogg/
 Comment: OggVorbis
@@ -277,7 +303,7 @@ License: Apache-2.0
 
 Files: ./thirdparty/meshoptimizer/
 Comment: meshoptimizer
-Copyright: 2016-2021, Arseny Kapoulkine
+Copyright: 2016-2022, Arseny Kapoulkine
 License: Expat
 
 Files: ./thirdparty/minimp3/
@@ -287,7 +313,7 @@ License: CC0-1.0
 
 Files: ./thirdparty/miniupnpc/
 Comment: MiniUPnP Project
-Copyright: 2005-2021, Thomas Bernard
+Copyright: 2005-2023, Thomas Bernard
 License: BSD-3-clause
 
 Files: ./thirdparty/minizip/
@@ -379,8 +405,13 @@ License: BSD-2-clause
 
 Files: ./thirdparty/msdfgen/
 Comment: Multi-channel signed distance field generator
-Copyright: 2016, Viktor Chlumsky
+Copyright: 2016-2022, Viktor Chlumsky
 License: MIT
+
+Files: ./thirdparty/nvapi/nvapi_minimal.h
+Comment: Stripped down version of "nvapi.h" from the NVIDIA NVAPI SDK
+Copyright: 2019-2022, NVIDIA Corporation
+License: Expat
 
 Files: ./thirdparty/oidn/
 Comment: Intel Open Image Denoise
@@ -389,7 +420,7 @@ License: Apache-2.0
 
 Files: ./thirdparty/openxr/
 Comment: OpenXR Loader
-Copyright: 2020-2022, The Khronos Group Inc.
+Copyright: 2020-2023, The Khronos Group Inc.
 License: Apache-2.0
 
 Files: ./thirdparty/pcre2/
@@ -410,7 +441,7 @@ License: Apache-2.0
 
 Files: ./thirdparty/spirv-reflect/
 Comment: SPIRV-Reflect
-Copyright: 2017-2018, Google Inc.
+Copyright: 2017-2022, Google Inc.
 License: Apache-2.0
 
 Files: ./thirdparty/squish/
@@ -437,15 +468,15 @@ License: BSD-3-clause
 
 Files: ./thirdparty/volk/
 Comment: volk
-Copyright: 2018-2019, Arseny Kapoulkine
+Copyright: 2018-2023, Arseny Kapoulkine
 License: Expat
 
 Files: ./thirdparty/vulkan/
 Comment: Vulkan Headers
-Copyright: 2014-2021, The Khronos Group Inc.
-  2014-2021, Valve Corporation
-  2014-2021, LunarG, Inc.
-  2015-2021, Google Inc.
+Copyright: 2014-2023, The Khronos Group Inc.
+  2014-2023, Valve Corporation
+  2014-2023, LunarG, Inc.
+  2015-2023, Google Inc.
 License: Apache-2.0
 
 Files: ./thirdparty/vulkan/vk_mem_alloc.h
@@ -467,12 +498,12 @@ License: Expat
 
 Files: ./thirdparty/zlib/
 Comment: zlib
-Copyright: 1995-2017, Jean-loup Gailly and Mark Adler
+Copyright: 1995-2023, Jean-loup Gailly and Mark Adler
 License: Zlib
 
 Files: ./thirdparty/zstd/
 Comment: Zstandard
-Copyright: 2016-2021, Facebook, Inc.
+Copyright: Meta Platforms, Inc. and affiliates.
 License: BSD-3-clause
 
 

@@ -1,35 +1,37 @@
-/*************************************************************************/
-/*  material_storage.h                                                   */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  material_storage.h                                                    */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #ifndef MATERIAL_STORAGE_RD_H
 #define MATERIAL_STORAGE_RD_H
+
+#include "texture_storage.h"
 
 #include "core/math/projection.h"
 #include "core/templates/local_vector.h"
@@ -54,24 +56,30 @@ public:
 	};
 
 	struct ShaderData {
-		virtual void set_code(const String &p_Code) = 0;
-		virtual void set_path_hint(const String &p_hint) = 0;
-		virtual void set_default_texture_parameter(const StringName &p_name, RID p_texture, int p_index) = 0;
-		virtual void get_shader_uniform_list(List<PropertyInfo> *p_param_list) const = 0;
+		String path;
+		HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> uniforms;
+		HashMap<StringName, HashMap<int, RID>> default_texture_params;
 
-		virtual void get_instance_param_list(List<RendererMaterialStorage::InstanceShaderParam> *p_param_list) const = 0;
-		virtual bool is_parameter_texture(const StringName &p_param) const = 0;
+		virtual void set_path_hint(const String &p_hint);
+		virtual void set_default_texture_parameter(const StringName &p_name, RID p_texture, int p_index);
+		virtual Variant get_default_parameter(const StringName &p_parameter) const;
+		virtual void get_shader_uniform_list(List<PropertyInfo> *p_param_list) const;
+		virtual void get_instance_param_list(List<RendererMaterialStorage::InstanceShaderParam> *p_param_list) const;
+		virtual bool is_parameter_texture(const StringName &p_param) const;
+
+		virtual void set_code(const String &p_Code) = 0;
 		virtual bool is_animated() const = 0;
 		virtual bool casts_shadows() const = 0;
-		virtual Variant get_default_parameter(const StringName &p_parameter) const = 0;
 		virtual RS::ShaderNativeSourceCode get_native_source_code() const { return RS::ShaderNativeSourceCode(); }
 
 		virtual ~ShaderData() {}
 	};
 
 	struct MaterialData {
+		Vector<RendererRD::TextureStorage::RenderTarget *> render_target_cache;
 		void update_uniform_buffer(const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const HashMap<StringName, Variant> &p_parameters, uint8_t *p_buffer, uint32_t p_buffer_size, bool p_use_linear_color);
-		void update_textures(const HashMap<StringName, Variant> &p_parameters, const HashMap<StringName, HashMap<int, RID>> &p_default_textures, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, RID *p_textures, bool p_use_linear_color);
+		void update_textures(const HashMap<StringName, Variant> &p_parameters, const HashMap<StringName, HashMap<int, RID>> &p_default_textures, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, RID *p_textures, bool p_use_linear_color, bool p_3d_material);
+		void set_as_used();
 
 		virtual void set_render_priority(int p_priority) = 0;
 		virtual void set_next_pass(RID p_pass) = 0;
@@ -79,7 +87,7 @@ public:
 		virtual ~MaterialData();
 
 		//to be used internally by update_parameters, in the most common configuration of material parameters
-		bool update_parameters_uniform_set(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty, const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, const HashMap<StringName, HashMap<int, RID>> &p_default_texture_params, uint32_t p_ubo_size, RID &uniform_set, RID p_shader, uint32_t p_shader_uniform_set, uint32_t p_barrier = RD::BARRIER_MASK_ALL);
+		bool update_parameters_uniform_set(const HashMap<StringName, Variant> &p_parameters, bool p_uniform_dirty, bool p_textures_dirty, const HashMap<StringName, ShaderLanguage::ShaderNode::Uniform> &p_uniforms, const uint32_t *p_uniform_offsets, const Vector<ShaderCompiler::GeneratedCode::Texture> &p_texture_uniforms, const HashMap<StringName, HashMap<int, RID>> &p_default_texture_params, uint32_t p_ubo_size, RID &r_uniform_set, RID p_shader, uint32_t p_shader_uniform_set, bool p_use_linear_color, bool p_3d_material, uint32_t p_barrier = RD::BARRIER_MASK_ALL_BARRIERS);
 		void free_parameters_uniform_set(RID p_uniform_set);
 
 	private:
@@ -97,13 +105,27 @@ public:
 		Vector<RID> texture_cache;
 	};
 
+	struct Samplers {
+		RID rids[RS::CANVAS_ITEM_TEXTURE_FILTER_MAX][RS::CANVAS_ITEM_TEXTURE_REPEAT_MAX];
+		float mipmap_bias = 0.0f;
+		bool use_nearest_mipmap_filter = false;
+		int anisotropic_filtering_level = 2;
+
+		_FORCE_INLINE_ RID get_sampler(RS::CanvasItemTextureFilter p_filter, RS::CanvasItemTextureRepeat p_repeat) const {
+			return rids[p_filter][p_repeat];
+		}
+
+		Vector<RD::Uniform> get_uniforms(int p_first_index) const;
+		bool is_valid() const;
+		bool is_null() const;
+	};
+
 private:
 	static MaterialStorage *singleton;
 
 	/* Samplers */
 
-	RID default_rd_samplers[RS::CANVAS_ITEM_TEXTURE_FILTER_MAX][RS::CANVAS_ITEM_TEXTURE_REPEAT_MAX];
-	RID custom_rd_samplers[RS::CANVAS_ITEM_TEXTURE_FILTER_MAX][RS::CANVAS_ITEM_TEXTURE_REPEAT_MAX];
+	Samplers default_samplers;
 
 	/* Buffers */
 
@@ -231,6 +253,8 @@ public:
 	MaterialStorage();
 	virtual ~MaterialStorage();
 
+	bool free(RID p_rid);
+
 	/* Helpers */
 
 	static _FORCE_INLINE_ void store_transform(const Transform3D &p_mtx, float *p_array) {
@@ -300,7 +324,7 @@ public:
 	static _FORCE_INLINE_ void store_camera(const Projection &p_mtx, float *p_array) {
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
-				p_array[i * 4 + j] = p_mtx.matrix[i][j];
+				p_array[i * 4 + j] = p_mtx.columns[i][j];
 			}
 		}
 	}
@@ -311,18 +335,30 @@ public:
 		}
 	}
 
+	// http://andrewthall.org/papers/df64_qf128.pdf
+#ifdef REAL_T_IS_DOUBLE
+	static _FORCE_INLINE_ void split_double(double a, float *a_hi, float *a_lo) {
+		const double SPLITTER = (1 << 29) + 1;
+		double t = a * SPLITTER;
+		double t_hi = t - (t - a);
+		double t_lo = a - t_hi;
+		*a_hi = (float)t_hi;
+		*a_lo = (float)t_lo;
+	}
+#endif
+
 	/* Samplers */
 
+	Samplers samplers_rd_allocate(float p_mipmap_bias = 0.0f) const;
+	void samplers_rd_free(Samplers &p_samplers) const;
+
 	_FORCE_INLINE_ RID sampler_rd_get_default(RS::CanvasItemTextureFilter p_filter, RS::CanvasItemTextureRepeat p_repeat) {
-		return default_rd_samplers[p_filter][p_repeat];
-	}
-	_FORCE_INLINE_ RID sampler_rd_get_custom(RS::CanvasItemTextureFilter p_filter, RS::CanvasItemTextureRepeat p_repeat) {
-		return custom_rd_samplers[p_filter][p_repeat];
+		return default_samplers.get_sampler(p_filter, p_repeat);
 	}
 
-	void sampler_rd_configure_custom(float mipmap_bias);
-
-	// void sampler_rd_set_default(float p_mipmap_bias);
+	_FORCE_INLINE_ const Samplers &samplers_rd_get_default() const {
+		return default_samplers;
+	}
 
 	/* Buffers */
 
@@ -347,7 +383,7 @@ public:
 
 	virtual int32_t global_shader_parameters_instance_allocate(RID p_instance) override;
 	virtual void global_shader_parameters_instance_free(RID p_instance) override;
-	virtual void global_shader_parameters_instance_update(RID p_instance, int p_index, const Variant &p_value) override;
+	virtual void global_shader_parameters_instance_update(RID p_instance, int p_index, const Variant &p_value, int p_flags_count = 0) override;
 
 	RID global_shader_uniforms_get_storage_buffer() const;
 

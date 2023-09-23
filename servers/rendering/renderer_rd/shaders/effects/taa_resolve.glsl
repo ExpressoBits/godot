@@ -32,7 +32,9 @@
 // Based on Spartan Engine's TAA implementation (without TAA upscale).
 // <https://github.com/PanosK92/SpartanEngine/blob/a8338d0609b85dc32f3732a5c27fb4463816a3b9/Data/shaders/temporal_antialiasing.hlsl>
 
+#ifndef MOLTENVK_USED
 #define USE_SUBGROUPS
+#endif // MOLTENVK_USED
 
 #define GROUP_SIZE 8
 #define FLT_MIN 0.00000001
@@ -318,7 +320,7 @@ vec3 temporal_antialiasing(uvec2 pos_group_top_left, uvec2 pos_group, uvec2 pos_
 	vec2 velocity = imageLoad(velocity_buffer, ivec2(pos_screen)).xy;
 
 	// Get reprojected uv
-	vec2 uv_reprojected = uv - velocity;
+	vec2 uv_reprojected = uv + velocity;
 
 	// Get input color
 	vec3 color_input = load_color(pos_group);

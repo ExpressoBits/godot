@@ -1,44 +1,44 @@
-/*************************************************************************/
-/*  csharp_script.h                                                      */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  csharp_script.h                                                       */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #ifndef CSHARP_SCRIPT_H
 #define CSHARP_SCRIPT_H
+
+#include "mono_gc_handle.h"
+#include "mono_gd/gd_mono.h"
 
 #include "core/doc_data.h"
 #include "core/io/resource_loader.h"
 #include "core/io/resource_saver.h"
 #include "core/object/script_language.h"
 #include "core/templates/self_list.h"
-
-#include "mono_gc_handle.h"
-#include "mono_gd/gd_mono.h"
 
 #ifdef TOOLS_ENABLED
 #include "editor/editor_plugin.h"
@@ -48,20 +48,10 @@ class CSharpScript;
 class CSharpInstance;
 class CSharpLanguage;
 
-#ifdef NO_SAFE_CAST
-template <typename TScriptInstance, typename TScriptLanguage>
-TScriptInstance *cast_script_instance(ScriptInstance *p_inst) {
-	if (!p_inst) {
-		return nullptr;
-	}
-	return p_inst->get_language() == TScriptLanguage::get_singleton() ? static_cast<TScriptInstance *>(p_inst) : nullptr;
-}
-#else
 template <typename TScriptInstance, typename TScriptLanguage>
 TScriptInstance *cast_script_instance(ScriptInstance *p_inst) {
 	return dynamic_cast<TScriptInstance *>(p_inst);
 }
-#endif
 
 #define CAST_CSHARP_INSTANCE(m_inst) (cast_script_instance<CSharpInstance, CSharpLanguage>(m_inst))
 
@@ -72,6 +62,7 @@ class CSharpScript : public Script {
 	friend class CSharpLanguage;
 
 	bool tool = false;
+	bool global_class = false;
 	bool valid = false;
 	bool reload_invalidated = false;
 
@@ -96,6 +87,8 @@ class CSharpScript : public Script {
 #endif
 
 	String source;
+	String class_name;
+	String icon_path;
 
 	SelfList<CSharpScript> script_list = this;
 
@@ -171,6 +164,9 @@ public:
 		Vector<DocData::ClassDoc> docs;
 		return docs;
 	}
+	virtual String get_class_icon_path() const override {
+		return icon_path;
+	}
 #endif // TOOLS_ENABLED
 
 	Error reload(bool p_keep_state = false) override;
@@ -196,11 +192,14 @@ public:
 	bool inherits_script(const Ref<Script> &p_script) const override;
 
 	Ref<Script> get_base_script() const override;
+	StringName get_global_name() const override;
+
 	ScriptLanguage *get_language() const override;
 
 	void get_script_method_list(List<MethodInfo> *p_list) const override;
 	bool has_method(const StringName &p_method) const override;
 	MethodInfo get_method_info(const StringName &p_method) const override;
+	Variant callp(const StringName &p_method, const Variant **p_args, int p_argcount, Callable::CallError &r_error) override;
 
 	int get_member_line(const StringName &p_member) const override;
 
@@ -260,6 +259,7 @@ public:
 	bool get(const StringName &p_name, Variant &r_ret) const override;
 	void get_property_list(List<PropertyInfo> *p_properties) const override;
 	Variant::Type get_property_type(const StringName &p_name, bool *r_is_valid) const override;
+	virtual void validate_property(PropertyInfo &p_property) const override;
 
 	bool property_can_revert(const StringName &p_name) const override;
 	bool property_get_revert(const StringName &p_name, Variant &r_ret) const override;
@@ -284,8 +284,8 @@ public:
 
 	const Variant get_rpc_config() const override;
 
-	void notification(int p_notification) override;
-	void _call_notification(int p_notification);
+	void notification(int p_notification, bool p_reversed = false) override;
+	void _call_notification(int p_notification, bool p_reversed = false);
 
 	String to_string(bool *r_valid) override;
 
@@ -336,14 +336,6 @@ class CSharpLanguage : public ScriptLanguage {
 
 	ManagedCallableMiddleman *managed_callable_middleman = memnew(ManagedCallableMiddleman);
 
-	struct StringNameCache {
-		StringName _property_can_revert;
-		StringName _property_get_revert;
-		StringName _script_source;
-
-		StringNameCache();
-	};
-
 	int lang_idx = -1;
 
 	// For debug_break and debug_break_parse
@@ -352,7 +344,6 @@ class CSharpLanguage : public ScriptLanguage {
 	String _debug_error;
 
 	friend class GDMono;
-	void _on_scripts_domain_about_to_unload();
 
 #ifdef TOOLS_ENABLED
 	EditorPlugin *godotsharp_editor = nullptr;
@@ -362,17 +353,15 @@ class CSharpLanguage : public ScriptLanguage {
 
 	static void *_instance_binding_create_callback(void *p_token, void *p_instance);
 	static void _instance_binding_free_callback(void *p_token, void *p_instance, void *p_binding);
-	static GDNativeBool _instance_binding_reference_callback(void *p_token, void *p_binding, GDNativeBool p_reference);
+	static GDExtensionBool _instance_binding_reference_callback(void *p_token, void *p_binding, GDExtensionBool p_reference);
 
-	static GDNativeInstanceBindingCallbacks _instance_binding_callbacks;
+	static GDExtensionInstanceBindingCallbacks _instance_binding_callbacks;
 
 public:
 	static void *get_instance_binding(Object *p_object);
 	static void *get_existing_instance_binding(Object *p_object);
 	static void set_instance_binding(Object *p_object, void *p_binding);
 	static bool has_instance_binding(Object *p_object);
-
-	StringNameCache string_names;
 
 	const Mutex &get_language_bind_mutex() {
 		return language_bind_mutex;
@@ -385,10 +374,6 @@ public:
 		return lang_idx;
 	}
 	void set_language_index(int p_idx);
-
-	_FORCE_INLINE_ const StringNameCache &get_string_names() {
-		return string_names;
-	}
 
 	_FORCE_INLINE_ static CSharpLanguage *get_singleton() {
 		return singleton;
@@ -421,7 +406,6 @@ public:
 	/* LANGUAGE FUNCTIONS */
 	String get_type() const override;
 	String get_extension() const override;
-	Error execute_file(const String &p_path) override;
 	void init() override;
 	void finish() override;
 
@@ -450,6 +434,10 @@ public:
 	virtual String _get_indentation() const;
 	/* TODO? */ void auto_indent_code(String &p_code, int p_from_line, int p_to_line) const override {}
 	/* TODO */ void add_global_constant(const StringName &p_variable, const Variant &p_value) override {}
+
+	/* SCRIPT GLOBAL CLASS FUNCTIONS */
+	virtual bool handles_global_class_type(const String &p_type) const override;
+	virtual String get_global_class_name(const String &p_path, String *r_base_type = nullptr, String *r_icon_path = nullptr) const override;
 
 	/* DEBUGGER FUNCTIONS */
 	String debug_get_error() const override;

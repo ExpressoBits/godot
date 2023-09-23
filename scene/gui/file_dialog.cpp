@@ -1,41 +1,41 @@
-/*************************************************************************/
-/*  file_dialog.cpp                                                      */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  file_dialog.cpp                                                       */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "file_dialog.h"
 
 #include "core/os/keyboard.h"
 #include "core/string/print_string.h"
 #include "scene/gui/label.h"
+#include "scene/theme/theme_db.h"
 
 FileDialog::GetIconFunc FileDialog::get_icon_func = nullptr;
-FileDialog::GetIconFunc FileDialog::get_large_icon_func = nullptr;
 
 FileDialog::RegisterFunc FileDialog::register_func = nullptr;
 FileDialog::RegisterFunc FileDialog::unregister_func = nullptr;
@@ -55,30 +55,47 @@ void FileDialog::_focus_file_text() {
 	}
 }
 
+void FileDialog::popup(const Rect2i &p_rect) {
+	if (access == ACCESS_FILESYSTEM && DisplayServer::get_singleton()->has_feature(DisplayServer::FEATURE_NATIVE_DIALOG) && (use_native_dialog || OS::get_singleton()->is_sandboxed())) {
+		DisplayServer::get_singleton()->file_dialog_show(get_title(), dir->get_text(), file->get_text().get_file(), show_hidden_files, DisplayServer::FileDialogMode(mode), filters, callable_mp(this, &FileDialog::_native_dialog_cb));
+	} else {
+		ConfirmationDialog::popup(p_rect);
+	}
+}
+
+void FileDialog::_native_dialog_cb(bool p_ok, const Vector<String> &p_files) {
+	if (p_ok) {
+		if (p_files.size() > 0) {
+			String f = p_files[0];
+			if (mode == FILE_MODE_OPEN_FILES) {
+				emit_signal(SNAME("files_selected"), p_files);
+			} else {
+				if (mode == FILE_MODE_SAVE_FILE) {
+					emit_signal(SNAME("file_selected"), f);
+				} else if ((mode == FILE_MODE_OPEN_ANY || mode == FILE_MODE_OPEN_FILE) && dir_access->file_exists(f)) {
+					emit_signal(SNAME("file_selected"), f);
+				} else if (mode == FILE_MODE_OPEN_ANY || mode == FILE_MODE_OPEN_DIR) {
+					emit_signal(SNAME("dir_selected"), f);
+				}
+			}
+			file->set_text(f);
+			dir->set_text(f.get_base_dir());
+		}
+	} else {
+		file->set_text("");
+		emit_signal(SNAME("canceled"));
+	}
+}
+
 VBoxContainer *FileDialog::get_vbox() {
 	return vbox;
 }
 
-void FileDialog::_update_theme_item_cache() {
-	ConfirmationDialog::_update_theme_item_cache();
-
-	theme_cache.parent_folder = get_theme_icon(SNAME("parent_folder"));
-	theme_cache.forward_folder = get_theme_icon(SNAME("forward_folder"));
-	theme_cache.back_folder = get_theme_icon(SNAME("back_folder"));
-	theme_cache.reload = get_theme_icon(SNAME("reload"));
-	theme_cache.toggle_hidden = get_theme_icon(SNAME("toggle_hidden"));
-	theme_cache.folder = get_theme_icon(SNAME("folder"));
-	theme_cache.file = get_theme_icon(SNAME("file"));
-
-	theme_cache.folder_icon_color = get_theme_color(SNAME("folder_icon_color"));
-	theme_cache.file_icon_color = get_theme_color(SNAME("file_icon_color"));
-	theme_cache.file_disabled_color = get_theme_color(SNAME("file_disabled_color"));
-
-	// TODO: Define own colors?
-	theme_cache.icon_normal_color = get_theme_color(SNAME("font_color"), SNAME("Button"));
-	theme_cache.icon_hover_color = get_theme_color(SNAME("font_hover_color"), SNAME("Button"));
-	theme_cache.icon_focus_color = get_theme_color(SNAME("font_focus_color"), SNAME("Button"));
-	theme_cache.icon_pressed_color = get_theme_color(SNAME("font_pressed_color"), SNAME("Button"));
+void FileDialog::_validate_property(PropertyInfo &p_property) const {
+	if (p_property.name == "dialog_text") {
+		// File dialogs have a custom layout, and dialog nodes can't have both a text and a layout.
+		p_property.usage = PROPERTY_USAGE_NONE;
+	}
 }
 
 void FileDialog::_notification(int p_what) {
@@ -127,6 +144,8 @@ void FileDialog::_notification(int p_what) {
 			show_hidden->add_theme_color_override("icon_hover_color", theme_cache.icon_hover_color);
 			show_hidden->add_theme_color_override("icon_focus_color", theme_cache.icon_focus_color);
 			show_hidden->add_theme_color_override("icon_pressed_color", theme_cache.icon_pressed_color);
+
+			invalidate();
 		} break;
 
 		case NOTIFICATION_TRANSLATION_CHANGED: {
@@ -172,18 +191,20 @@ void FileDialog::shortcut_input(const Ref<InputEvent> &p_event) {
 
 void FileDialog::set_enable_multiple_selection(bool p_enable) {
 	tree->set_select_mode(p_enable ? Tree::SELECT_MULTI : Tree::SELECT_SINGLE);
-};
+}
 
 Vector<String> FileDialog::get_selected_files() const {
 	Vector<String> list;
 
 	TreeItem *item = tree->get_root();
-	while ((item = tree->get_next_selected(item))) {
+	item = tree->get_next_selected(item);
+	while (item) {
 		list.push_back(dir_access->get_current_dir().path_join(item->get_text(0)));
-	};
+		item = tree->get_next_selected(item);
+	}
 
 	return list;
-};
+}
 
 void FileDialog::update_dir() {
 	if (root_prefix.is_empty()) {
@@ -345,14 +366,15 @@ void FileDialog::_action_pressed() {
 			}
 		}
 
-		if (!valid) {
+		String file_name = file_text.strip_edges().get_file();
+		if (!valid || file_name.is_empty()) {
 			exterr->popup_centered(Size2(250, 80));
 			return;
 		}
 
 		if (dir_access->file_exists(f)) {
-			confirm_save->set_text(RTR("File exists, overwrite?"));
-			confirm_save->popup_centered(Size2(200, 80));
+			confirm_save->set_text(vformat(RTR("File \"%s\" already exists.\nDo you want to overwrite it?"), f));
+			confirm_save->popup_centered(Size2(250, 80));
 		} else {
 			emit_signal(SNAME("file_selected"), f);
 			hide();
@@ -409,7 +431,7 @@ void FileDialog::_go_back() {
 }
 
 void FileDialog::_go_forward() {
-	if (local_history_pos == local_history.size() - 1) {
+	if (local_history_pos >= local_history.size() - 1) {
 		return;
 	}
 
@@ -630,8 +652,11 @@ void FileDialog::update_file_list() {
 		files.pop_front();
 	}
 
-	if (tree->get_root() && tree->get_root()->get_first_child() && tree->get_selected() == nullptr) {
-		tree->get_root()->get_first_child()->select(0);
+	if (mode != FILE_MODE_SAVE_FILE) {
+		// Select the first file from list if nothing is selected.
+		if (tree->get_root() && tree->get_root()->get_first_child() && tree->get_selected() == nullptr) {
+			tree->get_root()->get_first_child()->select(0);
+		}
 	}
 }
 
@@ -741,10 +766,10 @@ void FileDialog::set_current_path(const String &p_path) {
 	if (pos == -1) {
 		set_current_file(p_path);
 	} else {
-		String dir = p_path.substr(0, pos);
-		String file = p_path.substr(pos + 1, p_path.length());
-		set_current_dir(dir);
-		set_current_file(file);
+		String path_dir = p_path.substr(0, pos);
+		String path_file = p_path.substr(pos + 1, p_path.length());
+		set_current_dir(path_dir);
+		set_current_file(path_file);
 	}
 }
 
@@ -826,6 +851,8 @@ void FileDialog::set_file_mode(FileMode p_mode) {
 	} else {
 		tree->set_select_mode(Tree::SELECT_SINGLE);
 	}
+
+	get_ok_button()->set_disabled(_is_open_should_be_disabled());
 }
 
 FileDialog::FileMode FileDialog::get_file_mode() const {
@@ -858,12 +885,22 @@ void FileDialog::set_access(Access p_access) {
 }
 
 void FileDialog::invalidate() {
-	if (is_visible()) {
-		update_file_list();
-		invalidated = false;
-	} else {
-		invalidated = true;
+	if (!is_visible() || is_invalidating) {
+		return;
 	}
+
+	is_invalidating = true;
+	callable_mp(this, &FileDialog::_invalidate).call_deferred();
+}
+
+void FileDialog::_invalidate() {
+	if (!is_invalidating) {
+		return;
+	}
+
+	update_file_list();
+
+	is_invalidating = false;
 }
 
 FileDialog::Access FileDialog::get_access() const {
@@ -961,9 +998,8 @@ void FileDialog::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_root_subfolder"), &FileDialog::get_root_subfolder);
 	ClassDB::bind_method(D_METHOD("set_show_hidden_files", "show"), &FileDialog::set_show_hidden_files);
 	ClassDB::bind_method(D_METHOD("is_showing_hidden_files"), &FileDialog::is_showing_hidden_files);
-	ClassDB::bind_method(D_METHOD("_update_file_name"), &FileDialog::update_file_name);
-	ClassDB::bind_method(D_METHOD("_update_dir"), &FileDialog::update_dir);
-	ClassDB::bind_method(D_METHOD("_update_file_list"), &FileDialog::update_file_list);
+	ClassDB::bind_method(D_METHOD("set_use_native_dialog", "native"), &FileDialog::set_use_native_dialog);
+	ClassDB::bind_method(D_METHOD("get_use_native_dialog"), &FileDialog::get_use_native_dialog);
 	ClassDB::bind_method(D_METHOD("deselect_all"), &FileDialog::deselect_all);
 
 	ClassDB::bind_method(D_METHOD("invalidate"), &FileDialog::invalidate);
@@ -974,6 +1010,7 @@ void FileDialog::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "root_subfolder"), "set_root_subfolder", "get_root_subfolder");
 	ADD_PROPERTY(PropertyInfo(Variant::PACKED_STRING_ARRAY, "filters"), "set_filters", "get_filters");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "show_hidden_files"), "set_show_hidden_files", "is_showing_hidden_files");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "use_native_dialog"), "set_use_native_dialog", "get_use_native_dialog");
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "current_dir", PROPERTY_HINT_DIR, "", PROPERTY_USAGE_NONE), "set_current_dir", "get_current_dir");
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "current_file", PROPERTY_HINT_FILE, "*", PROPERTY_USAGE_NONE), "set_current_file", "get_current_file");
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "current_path", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NONE), "set_current_path", "get_current_path");
@@ -991,6 +1028,24 @@ void FileDialog::_bind_methods() {
 	BIND_ENUM_CONSTANT(ACCESS_RESOURCES);
 	BIND_ENUM_CONSTANT(ACCESS_USERDATA);
 	BIND_ENUM_CONSTANT(ACCESS_FILESYSTEM);
+
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, FileDialog, parent_folder);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, FileDialog, forward_folder);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, FileDialog, back_folder);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, FileDialog, reload);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, FileDialog, toggle_hidden);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, FileDialog, folder);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_ICON, FileDialog, file);
+
+	BIND_THEME_ITEM(Theme::DATA_TYPE_COLOR, FileDialog, folder_icon_color);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_COLOR, FileDialog, file_icon_color);
+	BIND_THEME_ITEM(Theme::DATA_TYPE_COLOR, FileDialog, file_disabled_color);
+
+	// TODO: Define own colors?
+	BIND_THEME_ITEM_EXT(Theme::DATA_TYPE_COLOR, FileDialog, icon_normal_color, "font_color", "Button");
+	BIND_THEME_ITEM_EXT(Theme::DATA_TYPE_COLOR, FileDialog, icon_hover_color, "font_hover_color", "Button");
+	BIND_THEME_ITEM_EXT(Theme::DATA_TYPE_COLOR, FileDialog, icon_focus_color, "font_focus_color", "Button");
+	BIND_THEME_ITEM_EXT(Theme::DATA_TYPE_COLOR, FileDialog, icon_pressed_color, "font_pressed_color", "Button");
 }
 
 void FileDialog::set_show_hidden_files(bool p_show) {
@@ -1007,6 +1062,14 @@ bool FileDialog::is_showing_hidden_files() const {
 
 void FileDialog::set_default_show_hidden_files(bool p_show) {
 	default_show_hidden_files = p_show;
+}
+
+void FileDialog::set_use_native_dialog(bool p_native) {
+	use_native_dialog = p_native;
+}
+
+bool FileDialog::get_use_native_dialog() const {
+	return use_native_dialog;
 }
 
 FileDialog::FileDialog() {
@@ -1131,7 +1194,7 @@ FileDialog::FileDialog() {
 	add_child(mkdirerr, false, INTERNAL_MODE_FRONT);
 
 	exterr = memnew(AcceptDialog);
-	exterr->set_text(RTR("Must use a valid extension."));
+	exterr->set_text(RTR("Invalid extension, or empty filename."));
 	add_child(exterr, false, INTERNAL_MODE_FRONT);
 
 	update_filters();

@@ -1,32 +1,32 @@
-/*************************************************************************/
-/*  export_template_manager.cpp                                          */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  export_template_manager.cpp                                           */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "export_template_manager.h"
 
@@ -38,8 +38,10 @@
 #include "editor/editor_paths.h"
 #include "editor/editor_scale.h"
 #include "editor/editor_settings.h"
+#include "editor/editor_string_names.h"
 #include "editor/progress_dialog.h"
 #include "scene/gui/file_dialog.h"
+#include "scene/gui/menu_button.h"
 #include "scene/gui/separator.h"
 #include "scene/gui/tree.h"
 #include "scene/main/http_request.h"
@@ -108,8 +110,8 @@ void ExportTemplateManager::_update_template_status() {
 		TreeItem *ti = installed_table->create_item(installed_root);
 		ti->set_text(0, version_string);
 
-		ti->add_button(0, get_theme_icon(SNAME("Folder"), SNAME("EditorIcons")), OPEN_TEMPLATE_FOLDER, false, TTR("Open the folder containing these templates."));
-		ti->add_button(0, get_theme_icon(SNAME("Remove"), SNAME("EditorIcons")), UNINSTALL_TEMPLATE, false, TTR("Uninstall these templates."));
+		ti->add_button(0, get_editor_theme_icon(SNAME("Folder")), OPEN_TEMPLATE_FOLDER, false, TTR("Open the folder containing these templates."));
+		ti->add_button(0, get_editor_theme_icon(SNAME("Remove")), UNINSTALL_TEMPLATE, false, TTR("Uninstall these templates."));
 	}
 }
 
@@ -265,9 +267,9 @@ void ExportTemplateManager::_refresh_mirrors_completed(int p_status, int p_code,
 
 	mirrors_available = false;
 
-	Dictionary data = json.get_data();
-	if (data.has("mirrors")) {
-		Array mirrors = data["mirrors"];
+	Dictionary mirror_data = json.get_data();
+	if (mirror_data.has("mirrors")) {
+		Array mirrors = mirror_data["mirrors"];
 
 		for (int i = 0; i < mirrors.size(); i++) {
 			Dictionary m = mirrors[i];
@@ -359,7 +361,7 @@ void ExportTemplateManager::_set_current_progress_status(const String &p_status,
 	download_progress_label->set_text(p_status);
 
 	if (p_error) {
-		download_progress_label->add_theme_color_override("font_color", get_theme_color(SNAME("error_color"), SNAME("Editor")));
+		download_progress_label->add_theme_color_override("font_color", get_theme_color(SNAME("error_color"), EditorStringName(Editor)));
 	} else {
 		download_progress_label->add_theme_color_override("font_color", get_theme_color(SNAME("font_color"), SNAME("Label")));
 	}
@@ -401,17 +403,17 @@ bool ExportTemplateManager::_install_file_selected(const String &p_file, bool p_
 
 		String file = String::utf8(fname);
 		if (file.ends_with("version.txt")) {
-			Vector<uint8_t> data;
-			data.resize(info.uncompressed_size);
+			Vector<uint8_t> uncomp_data;
+			uncomp_data.resize(info.uncompressed_size);
 
 			// Read.
 			unzOpenCurrentFile(pkg);
-			ret = unzReadCurrentFile(pkg, data.ptrw(), data.size());
+			ret = unzReadCurrentFile(pkg, uncomp_data.ptrw(), uncomp_data.size());
 			ERR_BREAK_MSG(ret < 0, vformat("An error occurred while attempting to read from file: %s. This file will not be used.", file));
 			unzCloseCurrentFile(pkg);
 
 			String data_str;
-			data_str.parse_utf8((const char *)data.ptr(), data.size());
+			data_str.parse_utf8((const char *)uncomp_data.ptr(), uncomp_data.size());
 			data_str = data_str.strip_edges();
 
 			// Version number should be of the form major.minor[.patch].status[.module_config]
@@ -473,12 +475,12 @@ bool ExportTemplateManager::_install_file_selected(const String &p_file, bool p_
 			continue;
 		}
 
-		Vector<uint8_t> data;
-		data.resize(info.uncompressed_size);
+		Vector<uint8_t> uncomp_data;
+		uncomp_data.resize(info.uncompressed_size);
 
 		// Read
 		unzOpenCurrentFile(pkg);
-		ret = unzReadCurrentFile(pkg, data.ptrw(), data.size());
+		ret = unzReadCurrentFile(pkg, uncomp_data.ptrw(), uncomp_data.size());
 		ERR_BREAK_MSG(ret < 0, vformat("An error occurred while attempting to read from file: %s. This file will not be used.", file));
 		unzCloseCurrentFile(pkg);
 
@@ -512,7 +514,7 @@ bool ExportTemplateManager::_install_file_selected(const String &p_file, bool p_
 			ERR_CONTINUE_MSG(true, "Can't open file from path '" + String(to_write) + "'.");
 		}
 
-		f->store_buffer(data.ptr(), data.size());
+		f->store_buffer(uncomp_data.ptr(), uncomp_data.size());
 		f.unref(); // close file.
 #ifndef WINDOWS_ENABLED
 		FileAccess::set_unix_permissions(to_write, (info.external_fa >> 16) & 0x01FF);
@@ -528,6 +530,7 @@ bool ExportTemplateManager::_install_file_selected(const String &p_file, bool p_
 	unzClose(pkg);
 
 	_update_template_status();
+	EditorSettings::get_singleton()->set_meta("export_template_download_directory", p_file.get_base_dir());
 	return true;
 }
 
@@ -618,7 +621,7 @@ void ExportTemplateManager::_installed_table_button_cbk(Object *p_item, int p_co
 
 void ExportTemplateManager::_open_template_folder(const String &p_version) {
 	const String &templates_dir = EditorPaths::get_singleton()->get_export_templates_dir();
-	OS::get_singleton()->shell_open("file://" + templates_dir.path_join(p_version));
+	OS::get_singleton()->shell_show_in_file_manager(templates_dir.path_join(p_version), true);
 }
 
 void ExportTemplateManager::popup_manager() {
@@ -667,11 +670,8 @@ Error ExportTemplateManager::install_android_template_from_file(const String &p_
 		f->store_line(VERSION_FULL_CONFIG);
 	}
 
-	// Create the android plugins directory.
-	Error err = da->make_dir_recursive("android/plugins");
-	ERR_FAIL_COND_V(err != OK, err);
-
-	err = da->make_dir_recursive("android/build");
+	// Create the android build directory.
+	Error err = da->make_dir_recursive("android/build");
 	ERR_FAIL_COND_V(err != OK, err);
 	{
 		// Add an empty .gdignore file to avoid scan.
@@ -714,12 +714,12 @@ Error ExportTemplateManager::install_android_template_from_file(const String &p_
 		String base_dir = path.get_base_dir();
 
 		if (!path.ends_with("/")) {
-			Vector<uint8_t> data;
-			data.resize(info.uncompressed_size);
+			Vector<uint8_t> uncomp_data;
+			uncomp_data.resize(info.uncompressed_size);
 
 			// Read.
 			unzOpenCurrentFile(pkg);
-			unzReadCurrentFile(pkg, data.ptrw(), data.size());
+			unzReadCurrentFile(pkg, uncomp_data.ptrw(), uncomp_data.size());
 			unzCloseCurrentFile(pkg);
 
 			if (!dirs_tested.has(base_dir)) {
@@ -730,7 +730,7 @@ Error ExportTemplateManager::install_android_template_from_file(const String &p_
 			String to_write = String("res://android/build").path_join(path);
 			Ref<FileAccess> f = FileAccess::open(to_write, FileAccess::WRITE);
 			if (f.is_valid()) {
-				f->store_buffer(data.ptr(), data.size());
+				f->store_buffer(uncomp_data.ptr(), uncomp_data.size());
 				f.unref(); // close file.
 #ifndef WINDOWS_ENABLED
 				FileAccess::set_unix_permissions(to_write, (info.external_fa >> 16) & 0x01FF);
@@ -756,11 +756,11 @@ void ExportTemplateManager::_notification(int p_what) {
 	switch (p_what) {
 		case NOTIFICATION_ENTER_TREE:
 		case NOTIFICATION_THEME_CHANGED: {
-			current_value->add_theme_font_override("font", get_theme_font(SNAME("main"), SNAME("EditorFonts")));
-			current_missing_label->add_theme_color_override("font_color", get_theme_color(SNAME("error_color"), SNAME("Editor")));
-			current_installed_label->add_theme_color_override("font_color", get_theme_color(SNAME("disabled_font_color"), SNAME("Editor")));
+			current_value->add_theme_font_override("font", get_theme_font(SNAME("main"), EditorStringName(EditorFonts)));
+			current_missing_label->add_theme_color_override("font_color", get_theme_color(SNAME("error_color"), EditorStringName(Editor)));
+			current_installed_label->add_theme_color_override("font_color", get_theme_color(SNAME("disabled_font_color"), EditorStringName(Editor)));
 
-			mirror_options_button->set_icon(get_theme_icon(SNAME("GuiTabMenuHl"), SNAME("EditorIcons")));
+			mirror_options_button->set_icon(get_editor_theme_icon(SNAME("GuiTabMenuHl")));
 		} break;
 
 		case NOTIFICATION_VISIBILITY_CHANGED: {
@@ -991,6 +991,7 @@ ExportTemplateManager::ExportTemplateManager() {
 	install_file_dialog->set_title(TTR("Select Template File"));
 	install_file_dialog->set_access(FileDialog::ACCESS_FILESYSTEM);
 	install_file_dialog->set_file_mode(FileDialog::FILE_MODE_OPEN_FILE);
+	install_file_dialog->set_current_dir(EditorSettings::get_singleton()->get_meta("export_template_download_directory", ""));
 	install_file_dialog->add_filter("*.tpz", TTR("Godot Export Templates"));
 	install_file_dialog->connect("file_selected", callable_mp(this, &ExportTemplateManager::_install_file_selected).bind(false));
 	add_child(install_file_dialog);

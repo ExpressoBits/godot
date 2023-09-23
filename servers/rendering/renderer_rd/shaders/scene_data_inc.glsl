@@ -69,7 +69,7 @@ struct SceneData {
 
 	float IBL_exposure_normalization;
 	bool pancake_shadows;
-	uint pad1;
+	uint camera_visible_layers;
 	uint pad2;
 
 	vec4 pad3;

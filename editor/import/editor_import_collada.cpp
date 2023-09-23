@@ -1,32 +1,32 @@
-/*************************************************************************/
-/*  editor_import_collada.cpp                                            */
-/*************************************************************************/
-/*                       This file is part of:                           */
-/*                           GODOT ENGINE                                */
-/*                      https://godotengine.org                          */
-/*************************************************************************/
-/* Copyright (c) 2007-2022 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2022 Godot Engine contributors (cf. AUTHORS.md).   */
-/*                                                                       */
-/* Permission is hereby granted, free of charge, to any person obtaining */
-/* a copy of this software and associated documentation files (the       */
-/* "Software"), to deal in the Software without restriction, including   */
-/* without limitation the rights to use, copy, modify, merge, publish,   */
-/* distribute, sublicense, and/or sell copies of the Software, and to    */
-/* permit persons to whom the Software is furnished to do so, subject to */
-/* the following conditions:                                             */
-/*                                                                       */
-/* The above copyright notice and this permission notice shall be        */
-/* included in all copies or substantial portions of the Software.       */
-/*                                                                       */
-/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
-/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
-/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
-/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
-/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
-/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
-/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
-/*************************************************************************/
+/**************************************************************************/
+/*  editor_import_collada.cpp                                             */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
 #include "editor_import_collada.h"
 
@@ -65,7 +65,7 @@ struct ColladaImport {
 	bool force_make_tangents = false;
 	bool apply_mesh_xform_to_vertices = true;
 	bool use_mesh_builtin_materials = false;
-	float bake_fps = 15;
+	float bake_fps = 30;
 
 	HashMap<String, NodeMap> node_map; //map from collada node to engine node
 	HashMap<String, String> node_name_map; //map from collada node to engine node
@@ -208,7 +208,7 @@ Error ColladaImport::_create_scene(Collada::Node *p_node, Node3D *p_parent) {
 						return OK; //do nothing not needed
 					}
 
-					if (!bool(GLOBAL_DEF("collada/use_ambient", false))) {
+					if (!bool(GLOBAL_GET("collada/use_ambient"))) {
 						return OK;
 					}
 					//well, it's an ambient light..
@@ -734,7 +734,7 @@ Error ColladaImport::_create_mesh_surfaces(bool p_optimize, Ref<ImporterMesh> &p
 		/* CREATE PRIMITIVE ARRAY */
 		/**************************/
 
-		// The way collada uses indices is more optimal, and friendlier with 3D modelling software,
+		// The way collada uses indices is more optimal, and friendlier with 3D modeling software,
 		// because it can index everything, not only vertices (similar to how the WII works).
 		// This is, however, more incompatible with standard video cards, so arrays must be converted.
 		// Must convert to GL/DX format.
@@ -1090,6 +1090,12 @@ Error ColladaImport::_create_resources(Collada::Node *p_node, bool p_use_compres
 						c->set_point_tilt(i, tilts->array[i]);
 					}
 				}
+				if (cd.closed && pc > 1) {
+					Vector3 pos = c->get_point_position(0);
+					Vector3 in = c->get_point_in(0);
+					Vector3 out = c->get_point_out(0);
+					c->add_point(pos, in, out, -1);
+				}
 
 				curve_cache[ng->source] = c;
 				path->set_curve(c);
@@ -1101,7 +1107,7 @@ Error ColladaImport::_create_resources(Collada::Node *p_node, bool p_use_compres
 
 			ImporterMeshInstance3D *mi = Object::cast_to<ImporterMeshInstance3D>(node);
 
-			ERR_FAIL_COND_V(!mi, ERR_BUG);
+			ERR_FAIL_NULL_V(mi, ERR_BUG);
 
 			Collada::SkinControllerData *skin = nullptr;
 			Collada::MorphControllerData *morph = nullptr;
@@ -1125,7 +1131,7 @@ Error ColladaImport::_create_resources(Collada::Node *p_node, bool p_use_compres
 					ERR_FAIL_COND_V(!node_map.has(skname), ERR_INVALID_DATA);
 					NodeMap nmsk = node_map[skname];
 					Skeleton3D *sk = Object::cast_to<Skeleton3D>(nmsk.node);
-					ERR_FAIL_COND_V(!sk, ERR_INVALID_DATA);
+					ERR_FAIL_NULL_V(sk, ERR_INVALID_DATA);
 					ERR_FAIL_COND_V(!skeleton_bone_map.has(sk), ERR_INVALID_DATA);
 					HashMap<String, int> &bone_remap_map = skeleton_bone_map[sk];
 
@@ -1754,7 +1760,7 @@ void EditorSceneFormatImporterCollada::get_extensions(List<String> *r_extensions
 	r_extensions->push_back("dae");
 }
 
-Node *EditorSceneFormatImporterCollada::import_scene(const String &p_path, uint32_t p_flags, const HashMap<StringName, Variant> &p_options, int p_bake_fps, List<String> *r_missing_deps, Error *r_err) {
+Node *EditorSceneFormatImporterCollada::import_scene(const String &p_path, uint32_t p_flags, const HashMap<StringName, Variant> &p_options, List<String> *r_missing_deps, Error *r_err) {
 	if (r_err) {
 		*r_err = OK;
 	}
@@ -1765,7 +1771,7 @@ Node *EditorSceneFormatImporterCollada::import_scene(const String &p_path, uint3
 	}
 
 	state.use_mesh_builtin_materials = true;
-	state.bake_fps = p_bake_fps;
+	state.bake_fps = (float)p_options["animation/fps"];
 
 	Error err = state.load(p_path, flags, p_flags & EditorSceneFormatImporter::IMPORT_GENERATE_TANGENT_ARRAYS, false);
 
@@ -1776,15 +1782,8 @@ Node *EditorSceneFormatImporterCollada::import_scene(const String &p_path, uint3
 	ERR_FAIL_COND_V_MSG(err != OK, nullptr, "Cannot load scene from file '" + p_path + "'.");
 
 	if (state.missing_textures.size()) {
-		/*
-	for(int i=0;i<state.missing_textures.size();i++) {
-		EditorNode::add_io_error("Texture Not Found: "+state.missing_textures[i]);
-	}
-	*/
-
 		if (r_missing_deps) {
 			for (int i = 0; i < state.missing_textures.size(); i++) {
-				//EditorNode::add_io_error("Texture Not Found: "+state.missing_textures[i]);
 				r_missing_deps->push_back(state.missing_textures[i]);
 			}
 		}

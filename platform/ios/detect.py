@@ -2,9 +2,10 @@ import os
 import sys
 from methods import detect_darwin_sdk_path
 
+from typing import TYPE_CHECKING
 
-def is_active():
-    return True
+if TYPE_CHECKING:
+    from SCons import Environment
 
 
 def get_name():
@@ -29,23 +30,29 @@ def get_opts():
         ),
         ("IOS_SDK_PATH", "Path to the iOS SDK", ""),
         BoolVariable("ios_simulator", "Build for iOS Simulator", False),
-        BoolVariable("ios_exceptions", "Enable exceptions", False),
         ("ios_triple", "Triple for ios toolchain", ""),
     ]
+
+
+def get_doc_classes():
+    return [
+        "EditorExportPlatformIOS",
+    ]
+
+
+def get_doc_path():
+    return "doc_classes"
 
 
 def get_flags():
     return [
         ("arch", "arm64"),  # Default for convenience.
-        ("tools", False),
+        ("target", "template_debug"),
         ("use_volk", False),
-        # Disable by default even if production is set, as it makes linking in Xcode
-        # on exports very slow and that's not what most users expect.
-        ("lto", "none"),
     ]
 
 
-def configure(env):
+def configure(env: "Environment"):
     # Validate arch.
     supported_arches = ["x86_64", "arm64"]
     if env["arch"] not in supported_arches:
@@ -55,25 +62,11 @@ def configure(env):
         )
         sys.exit()
 
-    ## Build type
+    ## LTO
 
-    if env["target"].startswith("release"):
-        env.Append(CPPDEFINES=["NDEBUG", ("NS_BLOCK_ASSERTIONS", 1)])
-        if env["optimize"] == "speed":  # optimize for speed (default)
-            # `-O2` is more friendly to debuggers than `-O3`, leading to better crash backtraces
-            # when using `target=release_debug`.
-            opt = "-O3" if env["target"] == "release" else "-O2"
-            env.Append(CCFLAGS=[opt, "-ftree-vectorize", "-fomit-frame-pointer"])
-            env.Append(LINKFLAGS=[opt])
-        elif env["optimize"] == "size":  # optimize for size
-            env.Append(CCFLAGS=["-Os", "-ftree-vectorize"])
-            env.Append(LINKFLAGS=["-Os"])
+    if env["lto"] == "auto":  # Disable by default as it makes linking in Xcode very slow.
+        env["lto"] = "none"
 
-    elif env["target"] == "debug":
-        env.Append(CCFLAGS=["-gdwarf-2", "-O0"])
-        env.Append(CPPDEFINES=["_DEBUG", ("DEBUG", 1)])
-
-    # LTO
     if env["lto"] != "none":
         if env["lto"] == "thin":
             env.Append(CCFLAGS=["-flto=thin"])
@@ -91,19 +84,18 @@ def configure(env):
     env["ENV"]["PATH"] = env["IOS_TOOLCHAIN_PATH"] + "/Developer/usr/bin/:" + env["ENV"]["PATH"]
 
     compiler_path = "$IOS_TOOLCHAIN_PATH/usr/bin/${ios_triple}"
-    s_compiler_path = "$IOS_TOOLCHAIN_PATH/Developer/usr/bin/"
 
     ccache_path = os.environ.get("CCACHE")
     if ccache_path is None:
         env["CC"] = compiler_path + "clang"
         env["CXX"] = compiler_path + "clang++"
-        env["S_compiler"] = s_compiler_path + "gcc"
+        env["S_compiler"] = compiler_path + "clang"
     else:
         # there aren't any ccache wrappers available for iOS,
         # to enable caching we need to prepend the path to the ccache binary
         env["CC"] = ccache_path + " " + compiler_path + "clang"
         env["CXX"] = ccache_path + " " + compiler_path + "clang++"
-        env["S_compiler"] = ccache_path + " " + s_compiler_path + "gcc"
+        env["S_compiler"] = ccache_path + " " + compiler_path + "clang"
     env["AR"] = compiler_path + "ar"
     env["RANLIB"] = compiler_path + "ranlib"
 
@@ -111,8 +103,8 @@ def configure(env):
 
     if env["ios_simulator"]:
         detect_darwin_sdk_path("iossimulator", env)
-        env.Append(ASFLAGS=["-mios-simulator-version-min=13.0"])
-        env.Append(CCFLAGS=["-mios-simulator-version-min=13.0"])
+        env.Append(ASFLAGS=["-mios-simulator-version-min=11.0"])
+        env.Append(CCFLAGS=["-mios-simulator-version-min=11.0"])
         env.extra_suffix = ".simulator" + env.extra_suffix
     else:
         detect_darwin_sdk_path("ios", env)
@@ -145,13 +137,6 @@ def configure(env):
         env.Append(ASFLAGS=["-arch", "arm64"])
         env.Append(CPPDEFINES=["NEED_LONG_INT"])
 
-    # Disable exceptions on non-tools (template) builds
-    if not env["tools"]:
-        if env["ios_exceptions"]:
-            env.Append(CCFLAGS=["-fexceptions"])
-        else:
-            env.Append(CCFLAGS=["-fno-exceptions"])
-
     # Temp fix for ABS/MAX/MIN macros in iOS SDK blocking compilation
     env.Append(CCFLAGS=["-Wno-ambiguous-macro"])
 
@@ -167,3 +152,11 @@ def configure(env):
 
     if env["vulkan"]:
         env.Append(CPPDEFINES=["VULKAN_ENABLED"])
+
+    if env["opengl3"]:
+        env.Append(CPPDEFINES=["GLES3_ENABLED"])
+        env.Prepend(
+            CPPPATH=[
+                "$IOS_SDK_PATH/System/Library/Frameworks/OpenGLES.framework/Headers",
+            ]
+        )

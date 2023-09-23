@@ -12,6 +12,7 @@ files = [
     "crash_handler_macos.mm",
     "macos_terminal_logger.mm",
     "display_server_macos.mm",
+    "godot_button_view.mm",
     "godot_content_view.mm",
     "godot_window_delegate.mm",
     "godot_window.mm",
@@ -23,6 +24,7 @@ files = [
     "tts_macos.mm",
     "joypad_macos.cpp",
     "vulkan_context_macos.mm",
+    "gl_manager_macos_angle.mm",
     "gl_manager_macos_legacy.mm",
 ]
 
