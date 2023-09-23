@@ -356,6 +356,9 @@ private:
 			uint32_t pad1;
 			uint32_t pad2;
 			uint32_t pad3;
+			uint32_t pad4;
+			uint32_t pad5;
+			uint32_t pad6;
 		};
 		static_assert(sizeof(UBO) % 16 == 0, "Scene UBO size must be a multiple of 16 bytes");
 
